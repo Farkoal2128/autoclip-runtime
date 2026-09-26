@@ -7,10 +7,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$releaseUrl = 'https://github.com/Farkoal2128/autoclip-runtime/releases/download/v0.1.0-dev0-windows-v11-no-raw-zip/autoclip-windows-py311-v11-no-raw-zip.zip'
-$expectedArchiveSha256 = '082a2cd31720aada57daa93b819a20e7aa540a75ab5d28c430ac8479497cd71e'
-$expectedManifestSha256 = '721dc9bb6c4daaacb12610723add358df5d4079cda8778d8b53a96b42390441b'
-$releaseId = 'v11-no-raw-zip'
+$releaseUrl = 'https://github.com/Farkoal2128/autoclip-runtime/releases/download/v0.1.0-dev0-windows-v11-gpu-runtime/autoclip-windows-py311-v11-gpu-runtime.zip'
+$expectedArchiveSha256 = '54124b3c41a7c4d41016c47689631070290036a7106e592681c8a7522a44074b'
+$expectedManifestSha256 = '468feda0fb38ec80133c37dd7ce1a0ec6f2429edee8ee5af2322a5814342b62b'
+$releaseId = 'v11-gpu-runtime'
 
 if ($ReleaseInfo) {
     [pscustomobject]@{
@@ -91,7 +91,7 @@ if ($PrerequisitesOnly) { Write-Host 'Prerequisites are ready.'; return }
 $downloaded = $false
 try {
     if (-not $ArchivePath) {
-        $ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "autoclip-v11-no-raw-zip-$PID.zip"
+        $ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "autoclip-v11-gpu-runtime-$PID.zip"
         $downloaded = $true
         Invoke-WebRequest -Uri $releaseUrl -OutFile $ArchivePath
     }
@@ -160,7 +160,7 @@ try {
     }
     $python = Join-Path $venv 'Scripts\python.exe'
     $wheelhouse = Join-Path $InstallRoot 'wheelhouse'
-    & $uv.Source pip install --python $python --no-cache --offline --no-index --find-links $wheelhouse autoclip==0.1.0.dev0
+    & $uv.Source pip install --python $python --no-cache --offline --no-index --find-links $wheelhouse 'autoclip[gpu]==0.1.0.dev0'
     if ($LASTEXITCODE -ne 0) { throw 'Offline AutoClip installation failed.' }
     & $uv.Source pip check --python $python
     if ($LASTEXITCODE -ne 0) { throw 'Installed dependency check failed.' }

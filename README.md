@@ -3,7 +3,7 @@
 This repository distributes the Windows runtime build of AutoClip. It contains
 the installer, PowerShell updater, launch script, copyright license and
 release checks. The
-versioned release asset contains the AutoClip wheel, its 76 Python dependency
+versioned release asset contains the AutoClip wheel, its 78 Python dependency
 wheels, and a source/notice supplement. Development research, plans, skills
 and roadmap files are not part of this repository; its small workflow tests
 verify release installation and updates.
@@ -24,9 +24,11 @@ FFmpeg/ffprobe build, and checks that FFmpeg has `libass` and `libx264`. It
 uses a compatible Python 3.11 already on the machine when available. Otherwise
 `uv` downloads Python 3.11, with a `winget` Python 3.11 fallback if that
 download is unavailable. It downloads the pinned release archive,
-checks its SHA-256 and every packaged file, then installs all 77 Python wheels
-offline. It installs under `%LOCALAPPDATA%\AutoClip\v11-no-raw-zip` by default and will
-not overwrite an existing installation. The release archive is about 250 MiB.
+checks its SHA-256 and every packaged file, then installs all 79 Python wheels
+offline, including the CUDA 12 cuBLAS and cuDNN runtime packages used by
+AutoClip's GPU Whisper path. It installs under
+`%LOCALAPPDATA%\AutoClip\v11-gpu-runtime` by default and will not overwrite
+an existing installation. The release archive is about 1.34 GB.
 If the previous installer stopped at `Python 3.11.16 installation failed`,
 rerun the same one-paste command. It resumes that exact incomplete extracted
 release after verifying its manifest and files, and rebuilds an interrupted
@@ -38,7 +40,7 @@ is missing. The installer may prompt for system permission or package terms.
 After installation:
 
 ```powershell
-& "$env:LOCALAPPDATA\AutoClip\v11-no-raw-zip\Start-AutoClip.ps1"
+& "$env:LOCALAPPDATA\AutoClip\v11-gpu-runtime\Start-AutoClip.ps1"
 ```
 
 AutoClip then opens locally at `http://127.0.0.1:8000`. Ollama is optional for
@@ -59,6 +61,24 @@ Then choose **Ollama** as the AI provider in AutoClip Settings and enter
 guarantee; the model download is about 4.9 GB and is separate from AutoClip.
 Hosted providers use your own configured credentials. The release asset
 contains none of these external tools or models.
+
+The packaged NVIDIA libraries live inside this release's Python environment;
+AutoClip registers their DLL directories when transcription starts. You do not
+need the full CUDA Toolkit, a global `PATH` change, or manually downloaded DLLs.
+On a machine without a usable NVIDIA GPU, Whisper can run on the CPU; the CUDA
+runtime packages remain installed but unused. An NVIDIA driver compatible with
+your GPU and these CUDA 12 libraries is still required for GPU inference.
+To inspect acceleration and dependencies, run:
+
+```powershell
+& "$env:LOCALAPPDATA\AutoClip\v11-gpu-runtime\.venv\Scripts\autoclip.exe" doctor
+```
+
+If you installed the earlier `v11-no-raw-zip` runtime and see a missing
+`cublas64_12.dll` error, close AutoClip and use the updater below. It installs
+this release beside the old one and keeps the old runtime available for
+rollback. Do not use a source-checkout editable-install command for the
+packaged runtime.
 
 ## Settings and AI providers
 
@@ -84,18 +104,27 @@ Windows native wheels into compatible packages.
 
 ## Release contents
 
-`autoclip-windows-py311-v11-no-raw-zip.zip` contains:
+`autoclip-windows-py311-v11-gpu-runtime.zip` contains:
 
-- `wheelhouse/`: 77 exact Python wheels, including the Windows PyAV and
-  CTranslate2 replacements.
+- `wheelhouse/`: 79 exact Python wheels, including the Windows PyAV and
+  CTranslate2 replacements and two NVIDIA CUDA 12 runtime wheels.
 - `notices-and-source/`: the accompanying license/notice texts, source
-  archives and build records.
+  archives, build records, NVIDIA wheel licenses and native-file inventory.
 - `release-manifest.json`: SHA-256 and size of every packaged file.
 - `Start-AutoClip.ps1` and `LICENSE`.
 
 The release archive is fixed to the tag in `install.ps1`. The installer checks
 its own pinned archive hash before extracting it. The release source tree on
 GitHub is not the installed application; the wheel in the release asset is.
+
+The two NVIDIA wheels are pinned to `nvidia-cublas-cu12==12.4.5.8` and
+`nvidia-cudnn-cu12==9.10.2.21`. Their exact wheel hashes, bundled license
+texts and DLL inventory are in the release manifest and
+`notices-and-source/nvidia-runtime/`. The cuDNN 9.10.2
+[acknowledgements](https://docs.nvidia.com/deeplearning/cudnn/backend/v9.10.2/reference/acknowledgements.html)
+and [terms](https://docs.nvidia.com/deeplearning/cudnn/backend/v9.10.2/reference/eula.html)
+are additional distribution references; this technical packaging check is
+not a final legal clearance of the new asset.
 
 ## Updating
 
@@ -168,7 +197,7 @@ only the edited ZIP; the secondary source-resolution ZIP option has been
 removed. Previously created source-resolution ZIP files and their download
 URLs remain available. Earlier V11 installations remain separate. The archive
 SHA-256 pinned in `install.ps1` is
-`082a2cd31720aada57daa93b819a20e7aa540a75ab5d28c430ac8479497cd71e`.
+`54124b3c41a7c4d41016c47689631070290036a7106e592681c8a7522a44074b`.
 
 The project owner directed public redistribution of this exact candidate.
 The technical audit confirmed file identity and sampled Windows behavior; it
