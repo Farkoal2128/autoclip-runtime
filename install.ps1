@@ -93,7 +93,16 @@ try {
     if (-not $ArchivePath) {
         $ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "autoclip-v11-gpu-runtime-$PID.zip"
         $downloaded = $true
-        Invoke-WebRequest -Uri $releaseUrl -OutFile $ArchivePath
+        try {
+            Invoke-WebRequest -Uri $releaseUrl -OutFile $ArchivePath
+        } catch {
+            $status = $null
+            if ($_.Exception.Response) { $status = [int]$_.Exception.Response.StatusCode }
+            if ($status -eq 404 -or $_.Exception.Message -match '(?i)\b404\b|\bNot Found\b') {
+                throw "AutoClip release asset for $releaseId is not published or could not be found at $releaseUrl. Your existing installation has not been replaced. Download error: $($_.Exception.Message)"
+            }
+            throw "AutoClip release asset download failed for $releaseId at $releaseUrl. Your existing installation has not been replaced. Network error: $($_.Exception.Message)"
+        }
     }
     if (-not (Test-Path -LiteralPath $ArchivePath -PathType Leaf)) {
         throw "Release archive not found: $ArchivePath"

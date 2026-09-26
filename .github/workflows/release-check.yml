@@ -19,7 +19,7 @@ jobs:
       - name: Parse installer and launch scripts
         shell: pwsh
         run: |
-          foreach ($name in @('install.ps1', 'update.ps1', 'Start-AutoClip.ps1', '.github/tests/Update.Tests.ps1', '.github/tests/InstallRetry.Tests.ps1', '.github/tests/GpuRuntime.Tests.ps1')) {
+          foreach ($name in @('install.ps1', 'update.ps1', 'Start-AutoClip.ps1', '.github/tests/Update.Tests.ps1', '.github/tests/InstallRetry.Tests.ps1', '.github/tests/GpuRuntime.Tests.ps1', '.github/tests/ReleasePin.Tests.ps1', '.github/tests/ReleaseDownload.Tests.ps1', '.github/scripts/verify-public-release.ps1')) {
             $tokens = $null
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $name), [ref]$tokens, [ref]$errors) | Out-Null
@@ -28,6 +28,9 @@ jobs:
           if (-not (Select-String -LiteralPath LICENSE -SimpleMatch 'Copyright (c) 2026 Jad Ghazi')) {
             throw 'The upstream copyright notice is missing.'
           }
+      - name: Release pin regression cases
+        shell: pwsh
+        run: ./.github/tests/ReleasePin.Tests.ps1
       - name: Reject unsupported platform
         if: runner.os != 'Windows'
         shell: pwsh
@@ -38,6 +41,35 @@ jobs:
           } catch {
             if ($_.Exception.Message -notlike '*Windows x64 Python wheels*') { throw }
           }
+
+  public-installer-pin:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect installer pin change
+        id: pin
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          $base = if ($env:EVENT_NAME -eq 'pull_request') { $env:PR_BASE } else { $env:PUSH_BEFORE }
+          if (-not $base -or $base -match '^0+$') {
+            $changed = $true
+          } else {
+            $files = @(git diff --name-only $base HEAD -- install.ps1)
+            if ($LASTEXITCODE -ne 0) { throw 'Could not compare installer pin with the base commit.' }
+            $changed = $files.Count -gt 0
+          }
+          "changed=$($changed.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+      - name: Verify exact public installer asset
+        if: steps.pin.outputs.changed == 'true'
+        shell: pwsh
+        run: ./.github/scripts/verify-public-release.ps1
 
   windows-release-smoke:
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
@@ -61,9 +93,12 @@ jobs:
             & ./install.ps1 -InstallRoot (Join-Path $env:RUNNER_TEMP 'interrupted-download-check')
             throw 'Installer unexpectedly succeeded.'
           } catch {
-            if ($_.Exception.Message -ne 'simulated download interruption') { throw }
+            if ($_.Exception.Message -notlike '*simulated download interruption*') { throw }
           }
           if (Test-Path -LiteralPath $archive) { throw 'Partial archive was not removed.' }
+      - name: Missing release keeps previous selection
+        shell: pwsh
+        run: ./.github/tests/ReleaseDownload.Tests.ps1
       - name: Download, verify and install published asset
         shell: pwsh
         env:

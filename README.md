@@ -181,6 +181,26 @@ without installing anything. Keep that output accurate when pinning a later
 release. The updater downloads one copy of the installer and uses it for both
 release selection and installation.
 
+## Maintainer release promotion
+
+1. Build the candidate archive and verify its wheel inventory, manifest,
+   required notices, install behavior and review evidence.
+2. Publish the immutable tagged GitHub Release asset. Do not replace an older
+   published asset or reuse a tag for different bytes.
+3. Download the asset through its public release URL without authentication.
+   Verify the downloaded ZIP SHA-256 and its `release-manifest.json` SHA-256.
+4. Only then change `install.ps1`'s release ID, URL, archive hash and manifest
+   hash. A public `main` installer pointing at an unpublished asset is a
+   broken release state: the updater will fail with a missing-download error.
+5. Run `.github/scripts/verify-public-release.ps1`, the release regression
+   checks, a clean Windows install and the updater/rollback smoke. Merge the
+   installer-pin change only after those checks pass. CI downloads and hashes
+   the public asset on pushes and pull requests that change `install.ps1`.
+
+The verifier checks the exact URL returned by `install.ps1 -ReleaseInfo`.
+Publishing a tag alone does not satisfy it; the named public asset must be
+downloadable and match both pinned hashes.
+
 ## Copyright and attribution
 
 AutoClip includes work from [artbyjazi/autoclip](https://github.com/artbyjazi/autoclip).
