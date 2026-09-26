@@ -39,9 +39,17 @@ local AI. If you want it, install it separately with:
 winget install --exact --id Ollama.Ollama --source winget
 ```
 
-You must still choose and pull a local model with `ollama pull <model>`; model
-weights are not in the release. Hosted providers use your own configured
-credentials. The release asset contains none of these external tools or models.
+For a first local model to try, run:
+
+```powershell
+ollama pull llama3.1:8b
+```
+
+Then choose **Ollama** as the AI provider in AutoClip Settings and enter
+`llama3.1:8b` as its model. This is a starting option, not a quality or speed
+guarantee; the model download is about 4.9 GB and is separate from AutoClip.
+Hosted providers use your own configured credentials. The release asset
+contains none of these external tools or models.
 
 ## Settings and AI providers
 
@@ -51,7 +59,9 @@ transcription. A separate optional Whisper model can transcribe newly found
 clips before Review. You can also set clip length and maximum count, choose a
 browser for download cookies, and set the export ratio, audio level, hardware
 encoding preference and SRT output. Review offers manual clip
-re-transcription.
+re-transcription. On Windows, **Settings → This machine → Desktop shortcut**
+can create or recreate an AutoClip launcher on your desktop, so later starts
+do not require a PowerShell window.
 
 The supported provider choices are **Anthropic**, **OpenAI-compatible**,
 **Google Gemini**, and **Ollama** (local, no API key). The OpenAI-compatible
@@ -77,6 +87,19 @@ Windows native wheels into compatible packages.
 The release archive is fixed to the tag in `install.ps1`. The installer checks
 its own pinned archive hash before extracting it. The release source tree on
 GitHub is not the installed application; the wheel in the release asset is.
+
+## Updating
+
+The one-paste command installs the pinned V11 release only. Running it again
+against an existing `%LOCALAPPDATA%\AutoClip\v11` directory stops with an
+"Install path already exists" message; it does not update in place. There is
+no separate updater in this release. A future version needs a new release
+asset, a new pinned archive hash in its installer, and an install path for that
+version. Install and verify that version before retiring the old runtime, then
+recreate the desktop shortcut from the new app. Project data and settings
+normally live separately under `%USERPROFILE%\.autoclip` (or your configured
+AutoClip home/storage location), so do not delete those folders when replacing
+a runtime installation.
 
 ## Copyright and attribution
 
