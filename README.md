@@ -21,7 +21,7 @@ uses Windows Package Manager (`winget`) to install missing `uv` and a full
 FFmpeg/ffprobe build, and checks that FFmpeg has `libass` and `libx264`. It
 installs Python 3.11.16 through `uv`, downloads the pinned release archive,
 checks its SHA-256 and every packaged file, then installs all 77 Python wheels
-offline. It installs under `%LOCALAPPDATA%\AutoClip\v11` by default and will
+offline. It installs under `%LOCALAPPDATA%\AutoClip\v11-cr09g-cr10` by default and will
 not overwrite an existing installation. The release archive is about 250 MiB.
 Windows Package Manager (Microsoft App Installer) must be available if a tool
 is missing. The installer may prompt for system permission or package terms.
@@ -29,7 +29,7 @@ is missing. The installer may prompt for system permission or package terms.
 After installation:
 
 ```powershell
-& "$env:LOCALAPPDATA\AutoClip\v11\Start-AutoClip.ps1"
+& "$env:LOCALAPPDATA\AutoClip\v11-cr09g-cr10\Start-AutoClip.ps1"
 ```
 
 AutoClip then opens locally at `http://127.0.0.1:8000`. Ollama is optional for
@@ -75,7 +75,7 @@ Windows native wheels into compatible packages.
 
 ## Release contents
 
-`autoclip-windows-py311-v11.zip` contains:
+`autoclip-windows-py311-v11-cr09g-cr10.zip` contains:
 
 - `wheelhouse/`: 77 exact Python wheels, including the Windows PyAV and
   CTranslate2 replacements.
@@ -90,8 +90,8 @@ GitHub is not the installed application; the wheel in the release asset is.
 
 ## Updating
 
-The one-paste command installs the pinned V11 release only. Running it again
-against an existing `%LOCALAPPDATA%\AutoClip\v11` directory stops with an
+The one-paste command installs the pinned CR-09G/CR-10 V11 refresh only. Running it again
+against an existing `%LOCALAPPDATA%\AutoClip\v11-cr09g-cr10` directory stops with an
 "Install path already exists" message; it does not update in place. There is
 no separate updater in this release. A future version needs a new release
 asset, a new pinned archive hash in its installer, and an install path for that
@@ -110,6 +110,14 @@ frontend, Python and native dependency notices accompany the release in
 `notices-and-source/`. Those components retain their own terms.
 
 ## Release status
+
+This refresh includes the creator-accepted CR-09G download activity, ETA,
+cancel and debug controls, and the creator-accepted CR-10 optional automatic
+clip-only transcription before Review. The earlier V11 installation remains
+separate. These creator verdicts apply to the reviewed Windows experience;
+they do not certify every download condition or model pairing. The archive
+SHA-256 pinned in `install.ps1` is
+`d4643ec767c492c456bc0141b89c284a2174ca8df7edce5cb2a33a00a42e2bfd`.
 
 The project owner directed public redistribution of this exact candidate.
 The technical audit confirmed file identity and sampled Windows behavior; it
