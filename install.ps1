@@ -1,6 +1,8 @@
 param(
     [string]$InstallRoot,
-    [string]$ArchivePath
+    [string]$ArchivePath,
+    [switch]$InstallOllama,
+    [switch]$PrerequisitesOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -17,12 +19,50 @@ if (-not $InstallRoot) {
     $InstallRoot = Join-Path $env:LOCALAPPDATA 'AutoClip\v11'
 }
 if (Test-Path -LiteralPath $InstallRoot) {
-    throw "Install path already exists: $InstallRoot. Choose another -InstallRoot to preserve existing data."
+    if (-not $PrerequisitesOnly) {
+        throw "Install path already exists: $InstallRoot. Choose another -InstallRoot to preserve existing data."
+    }
 }
-$uv = Get-Command uv -ErrorAction SilentlyContinue
-if (-not $uv) {
-    throw 'uv is required. Install it from https://docs.astral.sh/uv/getting-started/installation/ and retry.'
+
+function Update-ProcessPath {
+    $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $user = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $env:Path = @($env:Path, $machine, $user, (Join-Path $env:USERPROFILE '.local\bin')) -join ';'
 }
+
+function Require-Tool([string]$Name, [string]$Package) {
+    $command = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($command) { return $command }
+    $winget = Get-Command winget -ErrorAction SilentlyContinue
+    if (-not $winget) {
+        throw "Missing $Name and Windows Package Manager (winget). Install App Installer from Microsoft, then retry."
+    }
+    Write-Host "Installing $Package with winget..."
+    & $winget.Source install --exact --id $Package --source winget --accept-source-agreements --accept-package-agreements
+    if ($LASTEXITCODE -ne 0) { throw "winget installation failed: $Package" }
+    Update-ProcessPath
+    $command = Get-Command $Name -ErrorAction SilentlyContinue
+    if (-not $command) { throw "$Name was installed but is unavailable in this PowerShell session. Open a new PowerShell window and retry." }
+    return $command
+}
+
+$uv = Require-Tool 'uv' 'astral-sh.uv'
+$ffmpeg = Require-Tool 'ffmpeg' 'Gyan.FFmpeg'
+$ffprobe = Get-Command ffprobe -ErrorAction SilentlyContinue
+if (-not $ffprobe) { throw 'FFmpeg was found, but ffprobe is missing. Install the complete Gyan.FFmpeg package.' }
+$filters = & $ffmpeg.Source -hide_banner -filters 2>&1 | Out-String
+if ($LASTEXITCODE -ne 0 -or $filters -notmatch '(?m)^\s*\.\.\s+ass\s') {
+    throw 'FFmpeg needs the ass subtitle filter (libass). Install a full FFmpeg build.'
+}
+$encoders = & $ffmpeg.Source -hide_banner -encoders 2>&1 | Out-String
+if ($LASTEXITCODE -ne 0 -or $encoders -notmatch '\blibx264\b') {
+    throw 'FFmpeg needs the libx264 encoder. Install a full FFmpeg build.'
+}
+if ($InstallOllama) {
+    $ollama = Require-Tool 'ollama' 'Ollama.Ollama'
+    Write-Host 'Ollama installed. Pull a model of your choice with: ollama pull <model>'
+}
+if ($PrerequisitesOnly) { Write-Host 'Prerequisites are ready.'; return }
 
 $downloaded = $false
 if (-not $ArchivePath) {
@@ -72,7 +112,7 @@ try {
 
     Write-Host "AutoClip installed at $InstallRoot"
     Write-Host "Run: & '$(Join-Path $InstallRoot 'Start-AutoClip.ps1')'"
-    Write-Host 'FFmpeg/FFprobe, Ollama and model weights are external prerequisites.'
+    Write-Host 'FFmpeg and ffprobe are ready. Configure a hosted AI provider in Settings, or install Ollama and pull a local model.'
 } finally {
     if ($downloaded -and (Test-Path -LiteralPath $ArchivePath)) {
         Remove-Item -LiteralPath $ArchivePath

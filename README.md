@@ -8,19 +8,23 @@ tests and roadmap files are not part of this repository.
 
 ## Install
 
-This release supports **Windows x64 and Python 3.11**. Install [uv](https://docs.astral.sh/uv/getting-started/installation/),
-then download `install.ps1` from the tagged release or this repository, inspect
-it, and run it in PowerShell:
+This release supports **Windows x64**. Paste this single line into PowerShell;
+you do not need to download `install.ps1` first:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1
+& ([scriptblock]::Create((Invoke-RestMethod 'https://raw.githubusercontent.com/Farkoal2128/autoclip-runtime/main/install.ps1')))
 ```
 
-The script downloads the pinned release archive, checks its SHA-256, verifies
-every packaged file, creates a Python 3.11.16 environment and installs all
-Python packages without fetching dependencies from the network. It installs
-under `%LOCALAPPDATA%\AutoClip\v11` by default. It will not overwrite an
-existing directory. The release archive is about 250 MiB.
+The command runs this repository's current installer directly from GitHub.
+Review [install.ps1](install.ps1) before running it if you prefer. The installer
+uses Windows Package Manager (`winget`) to install missing `uv` and a full
+FFmpeg/ffprobe build, and checks that FFmpeg has `libass` and `libx264`. It
+installs Python 3.11.16 through `uv`, downloads the pinned release archive,
+checks its SHA-256 and every packaged file, then installs all 77 Python wheels
+offline. It installs under `%LOCALAPPDATA%\AutoClip\v11` by default and will
+not overwrite an existing installation. The release archive is about 250 MiB.
+Windows Package Manager (Microsoft App Installer) must be available if a tool
+is missing. The installer may prompt for system permission or package terms.
 
 After installation:
 
@@ -28,11 +32,28 @@ After installation:
 & "$env:LOCALAPPDATA\AutoClip\v11\Start-AutoClip.ps1"
 ```
 
-AutoClip then opens locally at `http://127.0.0.1:8000`. You must supply
-`ffmpeg` and `ffprobe` with `libass` and `libx264` separately. Ollama and
-model weights are optional external installations for local AI operation;
-hosted providers use your own configured credentials. The release asset does
-not contain these external tools or models.
+AutoClip then opens locally at `http://127.0.0.1:8000`. To install optional
+Ollama for local AI in the same pass, append `-InstallOllama` to the one-line
+command. You must still choose and pull a local model with `ollama pull
+<model>`; model weights are not in the release. Hosted providers use your own
+configured credentials. The release asset contains none of these external
+tools or models.
+
+## Settings and AI providers
+
+In **Settings**, choose an AI provider and model for highlight selection,
+configure its API key where needed, and select a Whisper model and language for
+transcription. A separate optional Whisper model can transcribe newly found
+clips before Review. You can also set clip length and maximum count, choose a
+browser for download cookies, and set the export ratio, audio level, hardware
+encoding preference and SRT output. Review offers manual clip
+re-transcription.
+
+The supported provider choices are **Anthropic**, **OpenAI-compatible**,
+**Google Gemini**, and **Ollama** (local, no API key). The OpenAI-compatible
+base URL may be configured for services such as OpenRouter, Groq and DeepSeek,
+or a local LM Studio server. Provider availability, model names and API costs
+depend on your account and configuration.
 
 This particular wheel set is Windows only. Linux, macOS and Docker are not
 validated by this release; a GitHub test on those platforms cannot turn
