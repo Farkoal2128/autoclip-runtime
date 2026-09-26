@@ -12,7 +12,7 @@ This release supports **Windows x64**. Paste this single line into PowerShell;
 you do not need to download `install.ps1` first:
 
 ```powershell
-& ([scriptblock]::Create((Invoke-RestMethod 'https://raw.githubusercontent.com/Farkoal2128/autoclip-runtime/main/install.ps1')))
+irm https://raw.githubusercontent.com/Farkoal2128/autoclip-runtime/main/install.ps1 | iex
 ```
 
 The command runs this repository's current installer directly from GitHub.
@@ -32,12 +32,16 @@ After installation:
 & "$env:LOCALAPPDATA\AutoClip\v11\Start-AutoClip.ps1"
 ```
 
-AutoClip then opens locally at `http://127.0.0.1:8000`. To install optional
-Ollama for local AI in the same pass, append `-InstallOllama` to the one-line
-command. You must still choose and pull a local model with `ollama pull
-<model>`; model weights are not in the release. Hosted providers use your own
-configured credentials. The release asset contains none of these external
-tools or models.
+AutoClip then opens locally at `http://127.0.0.1:8000`. Ollama is optional for
+local AI. If you want it, install it separately with:
+
+```powershell
+winget install --exact --id Ollama.Ollama --source winget
+```
+
+You must still choose and pull a local model with `ollama pull <model>`; model
+weights are not in the release. Hosted providers use your own configured
+credentials. The release asset contains none of these external tools or models.
 
 ## Settings and AI providers
 
