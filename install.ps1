@@ -1,5 +1,5 @@
 param(
-    [string]$InstallRoot = (Join-Path $env:LOCALAPPDATA 'AutoClip\v11'),
+    [string]$InstallRoot,
     [string]$ArchivePath
 )
 
@@ -12,6 +12,9 @@ if (-not $IsWindows -and $PSVersionTable.PSEdition -eq 'Core') {
 }
 if (-not [Environment]::Is64BitOperatingSystem) {
     throw 'This release requires 64-bit Windows.'
+}
+if (-not $InstallRoot) {
+    $InstallRoot = Join-Path $env:LOCALAPPDATA 'AutoClip\v11'
 }
 if (Test-Path -LiteralPath $InstallRoot) {
     throw "Install path already exists: $InstallRoot. Choose another -InstallRoot to preserve existing data."
