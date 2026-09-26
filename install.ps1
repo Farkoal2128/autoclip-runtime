@@ -8,6 +8,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $releaseUrl = 'https://github.com/Farkoal2128/autoclip-runtime/releases/download/v0.1.0-dev0-windows-v11-no-raw-zip/autoclip-windows-py311-v11-no-raw-zip.zip'
 $expectedArchiveSha256 = '082a2cd31720aada57daa93b819a20e7aa540a75ab5d28c430ac8479497cd71e'
+$expectedManifestSha256 = '721dc9bb6c4daaacb12610723add358df5d4079cda8778d8b53a96b42390441b'
 
 if (-not $IsWindows -and $PSVersionTable.PSEdition -eq 'Core') {
     throw 'This release contains Windows x64 Python wheels. Linux, macOS and Docker are not supported by this installer.'
@@ -18,9 +19,18 @@ if (-not [Environment]::Is64BitOperatingSystem) {
 if (-not $InstallRoot) {
     $InstallRoot = Join-Path $env:LOCALAPPDATA 'AutoClip\v11-no-raw-zip'
 }
+$resumeIncomplete = $false
 if (Test-Path -LiteralPath $InstallRoot) {
     if (-not $PrerequisitesOnly) {
-        throw "Install path already exists: $InstallRoot. Choose another -InstallRoot to preserve existing data."
+        $existingManifest = Join-Path $InstallRoot 'release-manifest.json'
+        $existingVenv = Join-Path $InstallRoot '.venv'
+        if ((Test-Path -LiteralPath $existingManifest -PathType Leaf) -and
+            -not (Test-Path -LiteralPath $existingVenv) -and
+            (Get-FileHash -LiteralPath $existingManifest -Algorithm SHA256).Hash.ToLowerInvariant() -eq $expectedManifestSha256) {
+            $resumeIncomplete = $true
+        } else {
+            throw "Install path already exists: $InstallRoot. Choose another -InstallRoot to preserve existing data."
+        }
     }
 }
 
@@ -78,12 +88,18 @@ try {
     }
 
     New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
-    Expand-Archive -LiteralPath $ArchivePath -DestinationPath $InstallRoot
+    Expand-Archive -LiteralPath $ArchivePath -DestinationPath $InstallRoot -Force
     $manifestPath = Join-Path $InstallRoot 'release-manifest.json'
+    if ((Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedManifestSha256) {
+        throw 'Release manifest SHA-256 mismatch.'
+    }
     $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $expectedFiles = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    [void]$expectedFiles.Add('release-manifest.json')
     $rootFull = [IO.Path]::GetFullPath($InstallRoot).TrimEnd('\') + '\'
     foreach ($entry in $manifest.files) {
         $relative = [string]$entry.path
+        [void]$expectedFiles.Add($relative.Replace('\', '/'))
         $file = [IO.Path]::GetFullPath((Join-Path $InstallRoot $relative))
         if (-not $file.StartsWith($rootFull, [StringComparison]::OrdinalIgnoreCase)) {
             throw "Invalid release path: $relative"
@@ -97,12 +113,29 @@ try {
             throw "Release file SHA-256 mismatch: $relative"
         }
     }
+    if ($resumeIncomplete) {
+        foreach ($file in (Get-ChildItem -LiteralPath $InstallRoot -File -Recurse -Force)) {
+            $relative = $file.FullName.Substring($rootFull.Length).Replace('\', '/')
+            if (-not $expectedFiles.Contains($relative)) {
+                throw "Unexpected file in incomplete install: $relative. Choose a new -InstallRoot."
+            }
+        }
+    }
 
     $venv = Join-Path $InstallRoot '.venv'
-    & $uv.Source python install 3.11.16
-    if ($LASTEXITCODE -ne 0) { throw 'Python 3.11.16 installation failed.' }
-    & $uv.Source venv --python 3.11.16 $venv
-    if ($LASTEXITCODE -ne 0) { throw 'Virtual environment creation failed.' }
+    & $uv.Source venv --python 3.11 $venv
+    if ($LASTEXITCODE -ne 0) {
+        $winget = Get-Command winget -ErrorAction SilentlyContinue
+        if (-not $winget) {
+            throw 'Python 3.11 was unavailable to uv, and winget is missing. Install Python 3.11 from python.org, then retry.'
+        }
+        Write-Host 'uv could not obtain Python 3.11. Installing the official Python 3.11 package with winget...'
+        & $winget.Source install --exact --id Python.Python.3.11 --source winget --accept-source-agreements --accept-package-agreements
+        if ($LASTEXITCODE -ne 0) { throw 'Python 3.11 installation with winget failed.' }
+        Update-ProcessPath
+        & $uv.Source venv --python 3.11 --no-managed-python --no-python-downloads $venv
+        if ($LASTEXITCODE -ne 0) { throw 'Python 3.11 is still unavailable after winget installation. Open a new PowerShell window and retry.' }
+    }
     $python = Join-Path $venv 'Scripts\python.exe'
     $wheelhouse = Join-Path $InstallRoot 'wheelhouse'
     & $uv.Source pip install --python $python --no-cache --offline --no-index --find-links $wheelhouse autoclip==0.1.0.dev0

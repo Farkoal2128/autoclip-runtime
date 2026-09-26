@@ -45,8 +45,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: Download, verify and install published asset
         shell: pwsh
+        env:
+          UV_PYTHON_DOWNLOADS: never
+          UV_PYTHON_INSTALL_DIR: ${{ runner.temp }}\empty-managed-python
         run: ./install.ps1 -InstallRoot (Join-Path $env:RUNNER_TEMP 'autoclip-v11-no-raw-zip')
       - name: Start packaged app and check health/home
         shell: pwsh

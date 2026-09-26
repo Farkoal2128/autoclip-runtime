@@ -19,10 +19,16 @@ The command runs this repository's current installer directly from GitHub.
 Review [install.ps1](install.ps1) before running it if you prefer. The installer
 uses Windows Package Manager (`winget`) to install missing `uv` and a full
 FFmpeg/ffprobe build, and checks that FFmpeg has `libass` and `libx264`. It
-installs Python 3.11.16 through `uv`, downloads the pinned release archive,
+uses a compatible Python 3.11 already on the machine when available. Otherwise
+`uv` downloads Python 3.11, with a `winget` Python 3.11 fallback if that
+download is unavailable. It downloads the pinned release archive,
 checks its SHA-256 and every packaged file, then installs all 77 Python wheels
 offline. It installs under `%LOCALAPPDATA%\AutoClip\v11-no-raw-zip` by default and will
 not overwrite an existing installation. The release archive is about 250 MiB.
+If the previous installer stopped at `Python 3.11.16 installation failed`,
+rerun the same one-paste command. It resumes that exact incomplete extracted
+release after verifying its manifest and files. Completed installations and
+unrecognized existing directories remain protected from overwrite.
 Windows Package Manager (Microsoft App Installer) must be available if a tool
 is missing. The installer may prompt for system permission or package terms.
 
