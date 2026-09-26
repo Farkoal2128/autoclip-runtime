@@ -1,10 +1,12 @@
 # AutoClip Windows runtime
 
 This repository distributes the Windows runtime build of AutoClip. It contains
-the installer, launch script, copyright license and release checks. The
+the installer, PowerShell updater, launch script, copyright license and
+release checks. The
 versioned release asset contains the AutoClip wheel, its 76 Python dependency
-wheels, and a source/notice supplement. Development research, plans, skills,
-tests and roadmap files are not part of this repository.
+wheels, and a source/notice supplement. Development research, plans, skills
+and roadmap files are not part of this repository; its small workflow tests
+verify release installation and updates.
 
 ## Install
 
@@ -96,16 +98,58 @@ GitHub is not the installed application; the wheel in the release asset is.
 
 ## Updating
 
-The one-paste command installs the pinned V11 refresh only. Running it again
-against an existing `%LOCALAPPDATA%\AutoClip\v11-no-raw-zip` directory stops with an
-"Install path already exists" message; it does not update in place. There is
-no separate updater in this release. A future version needs a new release
-asset, a new pinned archive hash in its installer, and an install path for that
-version. Install and verify that version before retiring the old runtime, then
-recreate the desktop shortcut from the new app. Project data and settings
-normally live separately under `%USERPROFILE%\.autoclip` (or your configured
-AutoClip home/storage location), so do not delete those folders when replacing
-a runtime installation.
+Close AutoClip, then paste this line into PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/Farkoal2128/autoclip-runtime/main/update.ps1 | iex
+```
+
+The updater downloads the current pinned installer from this repository. It
+installs a newer release into its own versioned directory, checks its manifest,
+Python 3.11 environment and isolated app health/home, then changes
+`%LOCALAPPDATA%\AutoClip\active.json` and the stable launcher. It never
+overwrites or removes an older runtime. A rerun on the active release is a
+verified no-op. To start the selected runtime from PowerShell:
+
+```powershell
+& "$env:LOCALAPPDATA\AutoClip\Start-AutoClip.ps1"
+```
+
+If an existing AutoClip desktop shortcut points to a runtime installed under
+`%LOCALAPPDATA%\AutoClip`, the updater retargets it after verification.
+It warns and leaves a shortcut outside that directory unchanged; recreate that
+shortcut from the updated app's Settings if you want it to launch the new
+runtime. If an existing managed shortcut identifies a prior runtime, the
+updater records it for rollback. Without such a shortcut, you can identify a
+prior verified release explicitly with `-PreviousReleaseId` when running
+the downloaded script. For an existing `v11` installation:
+
+```powershell
+& ([ScriptBlock]::Create((irm https://raw.githubusercontent.com/Farkoal2128/autoclip-runtime/main/update.ps1))) -PreviousReleaseId 'v11'
+```
+
+To select the previously recorded runtime again, close AutoClip and run:
+
+```powershell
+& ([ScriptBlock]::Create((irm https://raw.githubusercontent.com/Farkoal2128/autoclip-runtime/main/update.ps1))) -Rollback
+```
+
+Rollback switches the runtime and managed shortcut; it does not reverse any
+project-data migration that might occur after you launch a newer application.
+The updater's verification uses a disposable AutoClip home and does not open
+your real project database. Project data and settings normally live under
+`%USERPROFILE%\.autoclip` (or your configured AutoClip home), separate
+from these runtime directories. Do not delete those data folders when
+retiring an old runtime.
+
+This updater follows the exact release pinned in `install.ps1`. A future
+release must first publish a new asset, then update that installer's release
+identifier, URL, archive hash, manifest hash and versioned install path.
+`install.ps1 -ReleaseInfo -PrerequisitesOnly` is the updater's local interface:
+it returns `ReleaseId`, `ArchiveSha256`, `ManifestSha256` and `ArchiveUrl`
+without installing anything. Keep that output accurate when pinning a later
+release. The updater downloads one copy of the installer and uses it for both
+release selection and installation.
 
 ## Copyright and attribution
 

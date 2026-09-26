@@ -2,13 +2,25 @@ param(
     [string]$InstallRoot,
     [string]$ArchivePath,
     [switch]$InstallOllama,
-    [switch]$PrerequisitesOnly
+    [switch]$PrerequisitesOnly,
+    [switch]$ReleaseInfo
 )
 
 $ErrorActionPreference = 'Stop'
 $releaseUrl = 'https://github.com/Farkoal2128/autoclip-runtime/releases/download/v0.1.0-dev0-windows-v11-no-raw-zip/autoclip-windows-py311-v11-no-raw-zip.zip'
 $expectedArchiveSha256 = '082a2cd31720aada57daa93b819a20e7aa540a75ab5d28c430ac8479497cd71e'
 $expectedManifestSha256 = '721dc9bb6c4daaacb12610723add358df5d4079cda8778d8b53a96b42390441b'
+$releaseId = 'v11-no-raw-zip'
+
+if ($ReleaseInfo) {
+    [pscustomobject]@{
+        ReleaseId = $releaseId
+        ArchiveSha256 = $expectedArchiveSha256
+        ManifestSha256 = $expectedManifestSha256
+        ArchiveUrl = $releaseUrl
+    }
+    return
+}
 
 if (-not $IsWindows -and $PSVersionTable.PSEdition -eq 'Core') {
     throw 'This release contains Windows x64 Python wheels. Linux, macOS and Docker are not supported by this installer.'
@@ -17,7 +29,7 @@ if (-not [Environment]::Is64BitOperatingSystem) {
     throw 'This release requires 64-bit Windows.'
 }
 if (-not $InstallRoot) {
-    $InstallRoot = Join-Path $env:LOCALAPPDATA 'AutoClip\v11-no-raw-zip'
+    $InstallRoot = Join-Path (Join-Path $env:LOCALAPPDATA 'AutoClip') $releaseId
 }
 $resumeIncomplete = $false
 if (Test-Path -LiteralPath $InstallRoot) {
