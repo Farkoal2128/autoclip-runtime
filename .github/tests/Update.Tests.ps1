@@ -9,8 +9,8 @@ $installer = Join-Path $repoRoot 'install.ps1'
 $updater = Join-Path $repoRoot 'update.ps1'
 
 $release = & $installer -ReleaseInfo -PrerequisitesOnly
-if ($release.ReleaseId -ne 'v11-gpu-runtime' -or
-    $release.ArchiveSha256 -ne '54124b3c41a7c4d41016c47689631070290036a7106e592681c8a7522a44074b') {
+if ($release.ReleaseId -ne 'v11-20260926-app-refresh' -or
+    $release.ArchiveSha256 -ne '5308c1fa34e967b38c4386970f123a3e67a2ea5532c1e144db577b95c56afdf0') {
     throw 'Installer did not report the pinned release identity.'
 }
 if (-not (Test-Path -LiteralPath $updater -PathType Leaf)) {
@@ -160,7 +160,7 @@ if ($ArchivePath) {
     $fixtureInstaller = Join-Path $BaseRoot 'next-version-installer.ps1'
     $installerSource = [IO.File]::ReadAllText($installer)
     $nextSource = $installerSource.Replace(
-        "releaseId = 'v11-gpu-runtime'",
+        "releaseId = 'v11-20260926-app-refresh'",
         "releaseId = 'v11-update-fixture'"
     )
     if ($nextSource -eq $installerSource) { throw 'Could not prepare the next-version fixture.' }

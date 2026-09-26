@@ -27,12 +27,13 @@ download is unavailable. It downloads the pinned release archive,
 checks its SHA-256 and every packaged file, then installs all 79 Python wheels
 offline, including the CUDA 12 cuBLAS and cuDNN runtime packages used by
 AutoClip's GPU Whisper path. It installs under
-`%LOCALAPPDATA%\AutoClip\v11-gpu-runtime` by default and will not overwrite
+`%LOCALAPPDATA%\AutoClip\v11-20260926-app-refresh` by default and will not overwrite
 an existing installation. The release archive is about 1.34 GB.
-If the previous installer stopped at `Python 3.11.16 installation failed`,
-rerun the same one-paste command. It resumes that exact incomplete extracted
-release after verifying its manifest and files, and rebuilds an interrupted
-Python environment. Completed installations made by this installer and
+If an earlier installer stopped at `Python 3.11.16 installation failed`,
+rerun the same one-paste command to install this release in its new directory.
+An interrupted installation of this exact release can resume after its
+manifest and files are verified, including rebuilding its Python environment.
+Completed installations made by this installer and
 unrecognized existing directories remain protected from overwrite.
 Windows Package Manager (Microsoft App Installer) must be available if a tool
 is missing. The installer may prompt for system permission or package terms.
@@ -40,7 +41,7 @@ is missing. The installer may prompt for system permission or package terms.
 After installation:
 
 ```powershell
-& "$env:LOCALAPPDATA\AutoClip\v11-gpu-runtime\Start-AutoClip.ps1"
+& "$env:LOCALAPPDATA\AutoClip\v11-20260926-app-refresh\Start-AutoClip.ps1"
 ```
 
 AutoClip then opens locally at `http://127.0.0.1:8000`. Ollama is optional for
@@ -71,7 +72,7 @@ your GPU and these CUDA 12 libraries is still required for GPU inference.
 To inspect acceleration and dependencies, run:
 
 ```powershell
-& "$env:LOCALAPPDATA\AutoClip\v11-gpu-runtime\.venv\Scripts\autoclip.exe" doctor
+& "$env:LOCALAPPDATA\AutoClip\v11-20260926-app-refresh\.venv\Scripts\autoclip.exe" doctor
 ```
 
 If you installed the earlier `v11-no-raw-zip` runtime and see a missing
@@ -104,7 +105,7 @@ Windows native wheels into compatible packages.
 
 ## Release contents
 
-`autoclip-windows-py311-v11-gpu-runtime.zip` contains:
+`autoclip-windows-py311-v11-20260926-app-refresh.zip` contains:
 
 - `wheelhouse/`: 79 exact Python wheels, including the Windows PyAV and
   CTranslate2 replacements and two NVIDIA CUDA 12 runtime wheels.
@@ -211,13 +212,20 @@ frontend, Python and native dependency notices accompany the release in
 
 ## Release status
 
-This refresh includes the creator-accepted CR-09G download controls and CR-10
-optional automatic clip-only transcription. Export all selected now creates
-only the edited ZIP; the secondary source-resolution ZIP option has been
-removed. Previously created source-resolution ZIP files and their download
-URLs remain available. Earlier V11 installations remain separate. The archive
-SHA-256 pinned in `install.ps1` is
-`54124b3c41a7c4d41016c47689631070290036a7106e592681c8a7522a44074b`.
+This refresh includes the Lavender Mist light theme and local Ollama highlight
+diagnostics with a conservative adaptive workload controller. A short paired
+local-model run did not establish a speedup or equivalent clip quality; longer
+creator evaluation remains open. The earlier creator-accepted CR-09G download
+controls and CR-10 optional automatic clip-only transcription remain included.
+Export all selected creates only the edited ZIP; previously created
+source-resolution ZIP files and their download URLs remain available. Earlier
+V11 installations remain separate. The archive SHA-256 pinned in `install.ps1`
+is `5308c1fa34e967b38c4386970f123a3e67a2ea5532c1e144db577b95c56afdf0`.
+
+This app refresh uses the current complete-environment updater: an update
+downloads about 1.34 GB even though the 78 dependency wheels are unchanged.
+The documented split app/runtime updater is a future design, not part of this
+release.
 
 The project owner directed public redistribution of this exact candidate.
 The technical audit confirmed file identity and sampled Windows behavior; it

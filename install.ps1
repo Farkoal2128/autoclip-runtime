@@ -7,10 +7,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$releaseUrl = 'https://github.com/Farkoal2128/autoclip-runtime/releases/download/v0.1.0-dev0-windows-v11-gpu-runtime/autoclip-windows-py311-v11-gpu-runtime.zip'
-$expectedArchiveSha256 = '54124b3c41a7c4d41016c47689631070290036a7106e592681c8a7522a44074b'
-$expectedManifestSha256 = '468feda0fb38ec80133c37dd7ce1a0ec6f2429edee8ee5af2322a5814342b62b'
-$releaseId = 'v11-gpu-runtime'
+$releaseUrl = 'https://github.com/Farkoal2128/autoclip-runtime/releases/download/v0.1.0-dev0-windows-v11-20260926-app-refresh/autoclip-windows-py311-v11-20260926-app-refresh.zip'
+$expectedArchiveSha256 = '5308c1fa34e967b38c4386970f123a3e67a2ea5532c1e144db577b95c56afdf0'
+$expectedManifestSha256 = '204e45e99779779b4de6620f6e17219ada695c1845d747032d0ad5f6dd5984ba'
+$releaseId = 'v11-20260926-app-refresh'
 
 if ($ReleaseInfo) {
     [pscustomobject]@{
@@ -91,7 +91,7 @@ if ($PrerequisitesOnly) { Write-Host 'Prerequisites are ready.'; return }
 $downloaded = $false
 try {
     if (-not $ArchivePath) {
-        $ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "autoclip-v11-gpu-runtime-$PID.zip"
+        $ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "autoclip-v11-20260926-app-refresh-$PID.zip"
         $downloaded = $true
         try {
             Invoke-WebRequest -Uri $releaseUrl -OutFile $ArchivePath

@@ -88,7 +88,7 @@ jobs:
             [IO.File]::WriteAllText($OutFile, 'interrupted download')
             throw 'simulated download interruption'
           }
-          $archive = Join-Path ([IO.Path]::GetTempPath()) "autoclip-v11-gpu-runtime-$PID.zip"
+          $archive = Join-Path ([IO.Path]::GetTempPath()) "autoclip-v11-20260926-app-refresh-$PID.zip"
           try {
             & ./install.ps1 -InstallRoot (Join-Path $env:RUNNER_TEMP 'interrupted-download-check')
             throw 'Installer unexpectedly succeeded.'
@@ -105,20 +105,20 @@ jobs:
           UV_PYTHON_DOWNLOADS: never
           UV_PYTHON_INSTALL_DIR: ${{ runner.temp }}\empty-managed-python
         run: |
-          $archive = Join-Path $env:RUNNER_TEMP 'autoclip-windows-py311-v11-gpu-runtime.zip'
+          $archive = Join-Path $env:RUNNER_TEMP 'autoclip-windows-py311-v11-20260926-app-refresh.zip'
           Invoke-WebRequest -UseBasicParsing -Uri (& ./install.ps1 -ReleaseInfo).ArchiveUrl -OutFile $archive
-          ./install.ps1 -InstallRoot (Join-Path $env:RUNNER_TEMP 'AutoClip\v11-gpu-runtime') -ArchivePath $archive
+          ./install.ps1 -InstallRoot (Join-Path $env:RUNNER_TEMP 'AutoClip\v11-20260926-app-refresh') -ArchivePath $archive
       - name: Verify packaged CUDA runtime and loader discovery
         shell: pwsh
         run: |
-          $archive = Join-Path $env:RUNNER_TEMP 'autoclip-windows-py311-v11-gpu-runtime.zip'
-          & ./.github/tests/GpuRuntime.Tests.ps1 -ReleaseArchive $archive -InstalledRoot (Join-Path $env:RUNNER_TEMP 'AutoClip\v11-gpu-runtime')
-          $python = Join-Path $env:RUNNER_TEMP 'AutoClip\v11-gpu-runtime\.venv\Scripts\python.exe'
+          $archive = Join-Path $env:RUNNER_TEMP 'autoclip-windows-py311-v11-20260926-app-refresh.zip'
+          & ./.github/tests/GpuRuntime.Tests.ps1 -ReleaseArchive $archive -InstalledRoot (Join-Path $env:RUNNER_TEMP 'AutoClip\v11-20260926-app-refresh')
+          $python = Join-Path $env:RUNNER_TEMP 'AutoClip\v11-20260926-app-refresh\.venv\Scripts\python.exe'
           & uv pip check --python $python
           if ($LASTEXITCODE -ne 0) { throw 'Installed dependency check failed.' }
       - name: Check interrupted install retry
         shell: pwsh
-        run: ./.github/tests/InstallRetry.Tests.ps1 -InstalledRoot (Join-Path $env:RUNNER_TEMP 'AutoClip\v11-gpu-runtime')
+        run: ./.github/tests/InstallRetry.Tests.ps1 -InstalledRoot (Join-Path $env:RUNNER_TEMP 'AutoClip\v11-20260926-app-refresh')
       - name: Update, rollback and failure recovery
         shell: pwsh
         run: ./.github/tests/Update.Tests.ps1 -BaseRoot (Join-Path $env:RUNNER_TEMP 'AutoClip')
@@ -126,6 +126,6 @@ jobs:
         shell: pwsh
         run: |
           $env:AUTOCLIP_HOME = Join-Path $env:RUNNER_TEMP 'autoclip-home'
-          $python = Join-Path $env:RUNNER_TEMP 'AutoClip\v11-gpu-runtime\.venv\Scripts\python.exe'
+          $python = Join-Path $env:RUNNER_TEMP 'AutoClip\v11-20260926-app-refresh\.venv\Scripts\python.exe'
           & $python -c "from fastapi.testclient import TestClient; from autoclip.app import create_app; c=TestClient(create_app()); c.__enter__(); assert c.get('/api/health').status_code == 200; assert c.get('/').status_code == 200; c.__exit__(None,None,None)"
           if ($LASTEXITCODE -ne 0) { throw 'Packaged health/home smoke failed.' }

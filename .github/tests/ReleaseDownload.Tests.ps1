@@ -19,7 +19,7 @@ try {
     } catch {
         if ($_.Exception.Message -notlike '*release asset*not published*') { throw }
     }
-    $partial = Join-Path ([IO.Path]::GetTempPath()) "autoclip-v11-gpu-runtime-$PID.zip"
+    $partial = Join-Path ([IO.Path]::GetTempPath()) "autoclip-v11-20260926-app-refresh-$PID.zip"
     if (Test-Path -LiteralPath $partial) { throw 'Partial release archive was not removed.' }
     if (Test-Path -LiteralPath $installRoot) { throw 'Missing release created an install root.' }
     if ([IO.File]::ReadAllText($state) -ne 'previous runtime remains active' -or
