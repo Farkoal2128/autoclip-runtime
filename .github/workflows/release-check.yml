@@ -48,6 +48,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Interrupted download removes the temporary archive
+        shell: pwsh
+        run: |
+          function Invoke-WebRequest {
+            param($Uri, $OutFile)
+            [IO.File]::WriteAllText($OutFile, 'interrupted download')
+            throw 'simulated download interruption'
+          }
+          $archive = Join-Path ([IO.Path]::GetTempPath()) "autoclip-v11-no-raw-zip-$PID.zip"
+          try {
+            & ./install.ps1 -InstallRoot (Join-Path $env:RUNNER_TEMP 'interrupted-download-check')
+            throw 'Installer unexpectedly succeeded.'
+          } catch {
+            if ($_.Exception.Message -ne 'simulated download interruption') { throw }
+          }
+          if (Test-Path -LiteralPath $archive) { throw 'Partial archive was not removed.' }
       - name: Download, verify and install published asset
         shell: pwsh
         env:

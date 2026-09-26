@@ -75,13 +75,13 @@ if ($InstallOllama) {
 if ($PrerequisitesOnly) { Write-Host 'Prerequisites are ready.'; return }
 
 $downloaded = $false
-if (-not $ArchivePath) {
-    $ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "autoclip-v11-no-raw-zip-$PID.zip"
-    Invoke-WebRequest -Uri $releaseUrl -OutFile $ArchivePath
-    $downloaded = $true
-}
-
 try {
+    if (-not $ArchivePath) {
+        $ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "autoclip-v11-no-raw-zip-$PID.zip"
+        $downloaded = $true
+        Invoke-WebRequest -Uri $releaseUrl -OutFile $ArchivePath
+    }
+
     $actualArchiveSha256 = (Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actualArchiveSha256 -ne $expectedArchiveSha256) {
         throw "Release archive SHA-256 mismatch: $actualArchiveSha256"
