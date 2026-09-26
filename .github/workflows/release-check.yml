@@ -19,7 +19,7 @@ jobs:
       - name: Parse installer and launch scripts
         shell: pwsh
         run: |
-          foreach ($name in @('install.ps1', 'update.ps1', 'Start-AutoClip.ps1', '.github/tests/Update.Tests.ps1')) {
+          foreach ($name in @('install.ps1', 'update.ps1', 'Start-AutoClip.ps1', '.github/tests/Update.Tests.ps1', '.github/tests/InstallRetry.Tests.ps1')) {
             $tokens = $null
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $name), [ref]$tokens, [ref]$errors) | Out-Null
@@ -70,6 +70,9 @@ jobs:
           UV_PYTHON_DOWNLOADS: never
           UV_PYTHON_INSTALL_DIR: ${{ runner.temp }}\empty-managed-python
         run: ./install.ps1 -InstallRoot (Join-Path $env:RUNNER_TEMP 'AutoClip\v11-no-raw-zip')
+      - name: Check interrupted install retry
+        shell: pwsh
+        run: ./.github/tests/InstallRetry.Tests.ps1 -InstalledRoot (Join-Path $env:RUNNER_TEMP 'AutoClip\v11-no-raw-zip')
       - name: Update, rollback and failure recovery
         shell: pwsh
         run: ./.github/tests/Update.Tests.ps1 -BaseRoot (Join-Path $env:RUNNER_TEMP 'AutoClip')

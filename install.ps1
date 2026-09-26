@@ -36,8 +36,10 @@ if (Test-Path -LiteralPath $InstallRoot) {
     if (-not $PrerequisitesOnly) {
         $existingManifest = Join-Path $InstallRoot 'release-manifest.json'
         $existingVenv = Join-Path $InstallRoot '.venv'
+        if (Test-Path -LiteralPath (Join-Path $InstallRoot '.install-complete')) {
+            throw "Install path already exists: $InstallRoot. Choose another -InstallRoot to preserve existing data."
+        }
         if ((Test-Path -LiteralPath $existingManifest -PathType Leaf) -and
-            -not (Test-Path -LiteralPath $existingVenv) -and
             (Get-FileHash -LiteralPath $existingManifest -Algorithm SHA256).Hash.ToLowerInvariant() -eq $expectedManifestSha256) {
             $resumeIncomplete = $true
         } else {
@@ -93,6 +95,9 @@ try {
         $downloaded = $true
         Invoke-WebRequest -Uri $releaseUrl -OutFile $ArchivePath
     }
+    if (-not (Test-Path -LiteralPath $ArchivePath -PathType Leaf)) {
+        throw "Release archive not found: $ArchivePath"
+    }
 
     $actualArchiveSha256 = (Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actualArchiveSha256 -ne $expectedArchiveSha256) {
@@ -128,14 +133,19 @@ try {
     if ($resumeIncomplete) {
         foreach ($file in (Get-ChildItem -LiteralPath $InstallRoot -File -Recurse -Force)) {
             $relative = $file.FullName.Substring($rootFull.Length).Replace('\', '/')
-            if (-not $expectedFiles.Contains($relative)) {
+            if (-not $expectedFiles.Contains($relative) -and
+                -not $relative.StartsWith('.venv/', [StringComparison]::OrdinalIgnoreCase)) {
                 throw "Unexpected file in incomplete install: $relative. Choose a new -InstallRoot."
             }
         }
     }
 
     $venv = Join-Path $InstallRoot '.venv'
-    & $uv.Source venv --python 3.11 $venv
+    $venvOptions = @()
+    if ($resumeIncomplete -and (Test-Path -LiteralPath $venv)) {
+        $venvOptions += '--clear'
+    }
+    & $uv.Source venv @venvOptions --python 3.11 $venv
     if ($LASTEXITCODE -ne 0) {
         $winget = Get-Command winget -ErrorAction SilentlyContinue
         if (-not $winget) {
@@ -145,7 +155,7 @@ try {
         & $winget.Source install --exact --id Python.Python.3.11 --source winget --accept-source-agreements --accept-package-agreements
         if ($LASTEXITCODE -ne 0) { throw 'Python 3.11 installation with winget failed.' }
         Update-ProcessPath
-        & $uv.Source venv --python 3.11 --no-managed-python --no-python-downloads $venv
+        & $uv.Source venv @venvOptions --python 3.11 --no-managed-python --no-python-downloads $venv
         if ($LASTEXITCODE -ne 0) { throw 'Python 3.11 is still unavailable after winget installation. Open a new PowerShell window and retry.' }
     }
     $python = Join-Path $venv 'Scripts\python.exe'
@@ -154,6 +164,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Offline AutoClip installation failed.' }
     & $uv.Source pip check --python $python
     if ($LASTEXITCODE -ne 0) { throw 'Installed dependency check failed.' }
+
+    [IO.File]::WriteAllText((Join-Path $InstallRoot '.install-complete'), $expectedArchiveSha256)
 
     Write-Host "AutoClip installed at $InstallRoot"
     Write-Host "Run: & '$(Join-Path $InstallRoot 'Start-AutoClip.ps1')'"

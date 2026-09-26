@@ -305,19 +305,38 @@ try {
     $targetRoot = Get-ReleaseRoot $releaseId
     if ($state -and $state.current.release_id -eq $releaseId -and
         $state.current.archive_sha256 -eq $release.archive_sha256) {
-        [void](Test-InstalledRelease $state.current)
-        Write-StableLauncher
-        $shortcutBackup = Update-DesktopShortcut $state.current
-        if ($shortcutBackup) { Remove-Item -LiteralPath $shortcutBackup }
-        Write-Host "AutoClip is already up to date: $releaseId"
-        return
+        try {
+            [void](Test-InstalledRelease $state.current)
+            Write-StableLauncher
+            $shortcutBackup = Update-DesktopShortcut $state.current
+            if ($shortcutBackup) { Remove-Item -LiteralPath $shortcutBackup }
+            Write-Host "AutoClip is already up to date: $releaseId"
+            return
+        } catch {
+            Write-Warning "The active $releaseId runtime needs repair: $($_.Exception.Message)"
+        }
     }
-    if (-not (Test-Path -LiteralPath (Join-Path $targetRoot '.venv\Scripts\python.exe'))) {
+    $validExisting = $false
+    if (Test-Path -LiteralPath (Join-Path $targetRoot '.venv\Scripts\python.exe')) {
+        try {
+            [void](Test-InstalledRelease $release)
+            $validExisting = $true
+        } catch {
+            Write-Warning "The existing $releaseId runtime did not pass verification; attempting a safe installer retry: $($_.Exception.Message)"
+        }
+    }
+    if (-not $validExisting) {
         $arguments = @{ InstallRoot = $targetRoot }
         if ($ArchivePath) { $arguments.ArchivePath = $ArchivePath }
         & $InstallerPath @arguments
     }
-    $previous = if ($state) { $state.current } else { Get-PreviousRelease $releaseId }
+    $previous = if ($state -and $state.current.release_id -eq $releaseId) {
+        $state.previous
+    } elseif ($state) {
+        $state.current
+    } else {
+        Get-PreviousRelease $releaseId
+    }
     Select-Release $release $previous
 } finally {
     if ($downloadedInstaller -and (Test-Path -LiteralPath $downloadedInstaller)) {
