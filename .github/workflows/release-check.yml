@@ -1,0 +1,57 @@
+name: Runtime release checks
+
+on:
+  push:
+  pull_request:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  repository:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse installer and launch scripts
+        shell: pwsh
+        run: |
+          foreach ($name in @('install.ps1', 'Start-AutoClip.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $name), [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors) { throw "$name has PowerShell syntax errors: $errors" }
+          }
+          if (-not (Select-String -LiteralPath LICENSE -SimpleMatch 'Copyright (c) 2026 Jad Ghazi')) {
+            throw 'The upstream copyright notice is missing.'
+          }
+      - name: Reject unsupported platform
+        if: runner.os != 'Windows'
+        shell: pwsh
+        run: |
+          try {
+            & ./install.ps1
+            throw 'Installer incorrectly accepted a non-Windows platform.'
+          } catch {
+            if ($_.Exception.Message -notlike '*Windows x64 Python wheels*') { throw }
+          }
+
+  windows-release-smoke:
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+      - name: Download, verify and install published asset
+        shell: pwsh
+        run: ./install.ps1 -InstallRoot (Join-Path $env:RUNNER_TEMP 'autoclip-v11')
+      - name: Start packaged app and check health/home
+        shell: pwsh
+        run: |
+          $env:AUTOCLIP_HOME = Join-Path $env:RUNNER_TEMP 'autoclip-home'
+          $python = Join-Path $env:RUNNER_TEMP 'autoclip-v11\.venv\Scripts\python.exe'
+          & $python -c "from fastapi.testclient import TestClient; from autoclip.app import create_app; c=TestClient(create_app()); c.__enter__(); assert c.get('/api/health').status_code == 200; assert c.get('/').status_code == 200; c.__exit__(None,None,None)"
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged health/home smoke failed.' }
