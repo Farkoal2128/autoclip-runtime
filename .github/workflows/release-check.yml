@@ -47,11 +47,11 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - name: Download, verify and install published asset
         shell: pwsh
-        run: ./install.ps1 -InstallRoot (Join-Path $env:RUNNER_TEMP 'autoclip-v11-cr09g-cr10')
+        run: ./install.ps1 -InstallRoot (Join-Path $env:RUNNER_TEMP 'autoclip-v11-no-raw-zip')
       - name: Start packaged app and check health/home
         shell: pwsh
         run: |
           $env:AUTOCLIP_HOME = Join-Path $env:RUNNER_TEMP 'autoclip-home'
-          $python = Join-Path $env:RUNNER_TEMP 'autoclip-v11-cr09g-cr10\.venv\Scripts\python.exe'
+          $python = Join-Path $env:RUNNER_TEMP 'autoclip-v11-no-raw-zip\.venv\Scripts\python.exe'
           & $python -c "from fastapi.testclient import TestClient; from autoclip.app import create_app; c=TestClient(create_app()); c.__enter__(); assert c.get('/api/health').status_code == 200; assert c.get('/').status_code == 200; c.__exit__(None,None,None)"
           if ($LASTEXITCODE -ne 0) { throw 'Packaged health/home smoke failed.' }

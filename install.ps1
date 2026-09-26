@@ -6,8 +6,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$releaseUrl = 'https://github.com/Farkoal2128/autoclip-runtime/releases/download/v0.1.0-dev0-windows-v11-cr09g-cr10/autoclip-windows-py311-v11-cr09g-cr10.zip'
-$expectedArchiveSha256 = 'd4643ec767c492c456bc0141b89c284a2174ca8df7edce5cb2a33a00a42e2bfd'
+$releaseUrl = 'https://github.com/Farkoal2128/autoclip-runtime/releases/download/v0.1.0-dev0-windows-v11-no-raw-zip/autoclip-windows-py311-v11-no-raw-zip.zip'
+$expectedArchiveSha256 = '082a2cd31720aada57daa93b819a20e7aa540a75ab5d28c430ac8479497cd71e'
 
 if (-not $IsWindows -and $PSVersionTable.PSEdition -eq 'Core') {
     throw 'This release contains Windows x64 Python wheels. Linux, macOS and Docker are not supported by this installer.'
@@ -16,7 +16,7 @@ if (-not [Environment]::Is64BitOperatingSystem) {
     throw 'This release requires 64-bit Windows.'
 }
 if (-not $InstallRoot) {
-    $InstallRoot = Join-Path $env:LOCALAPPDATA 'AutoClip\v11-cr09g-cr10'
+    $InstallRoot = Join-Path $env:LOCALAPPDATA 'AutoClip\v11-no-raw-zip'
 }
 if (Test-Path -LiteralPath $InstallRoot) {
     if (-not $PrerequisitesOnly) {
@@ -66,7 +66,7 @@ if ($PrerequisitesOnly) { Write-Host 'Prerequisites are ready.'; return }
 
 $downloaded = $false
 if (-not $ArchivePath) {
-    $ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "autoclip-v11-cr09g-cr10-$PID.zip"
+    $ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "autoclip-v11-no-raw-zip-$PID.zip"
     Invoke-WebRequest -Uri $releaseUrl -OutFile $ArchivePath
     $downloaded = $true
 }
