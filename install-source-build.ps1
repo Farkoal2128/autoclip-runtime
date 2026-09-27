@@ -142,11 +142,11 @@ if (-not $git) { throw 'Git for Windows installation did not provide git.exe.' }
 $gitVersion = & $git.Source --version | Out-String
 if ($LASTEXITCODE -ne 0 -or $gitVersion -notmatch 'git version 2\.(4[5-9]|5[0-9])\.') { throw "Unsupported Git version: $gitVersion" }
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-$vsRoot = if (Test-Path -LiteralPath $vswhere) { & $vswhere -latest -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 Microsoft.VisualStudio.Component.Windows10SDK.20348 -property installationPath | Select-Object -First 1 }
+$vsRoot = if (Test-Path -LiteralPath $vswhere) { & $vswhere -latest -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1 }
 if (-not $vsRoot) {
     Install-WingetPackage 'Microsoft.VisualStudio.2022.BuildTools' '17.14.41' '--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.Windows10SDK.20348'
     if (-not (Test-Path -LiteralPath $vswhere)) { throw 'Visual Studio installer did not provide vswhere.exe.' }
-    $vsRoot = & $vswhere -latest -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 Microsoft.VisualStudio.Component.Windows10SDK.20348 -property installationPath | Select-Object -First 1
+    $vsRoot = & $vswhere -latest -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1
 }
 if (-not $vsRoot) { throw 'Visual Studio 2022 C++ Build Tools and Windows SDK are unavailable after provisioning.' }
 $vcvars = Join-Path $vsRoot 'VC\Auxiliary\Build\vcvars64.bat'

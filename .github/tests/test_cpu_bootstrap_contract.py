@@ -27,6 +27,8 @@ class CpuBootstrapContractTests(unittest.TestCase):
         ):
             with self.subTest(item=item):
                 self.assertIn(item, installer)
+        self.assertEqual(installer.count("-requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath"), 2)
+        self.assertNotIn("-requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 Microsoft.VisualStudio.Component.Windows10SDK.20348", installer)
 
     def test_cpu_receipt_records_profile_and_build_inputs(self) -> None:
         builder = (ROOT / "build-native-from-source.ps1").read_text(encoding="utf-8")
