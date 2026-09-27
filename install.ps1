@@ -7,10 +7,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$releaseUrl = 'https://github.com/Farkoal2128/autoclip-runtime/releases/download/v0.1.0-dev0-windows-v11-20260926-app-refresh/autoclip-windows-py311-v11-20260926-app-refresh.zip'
-$expectedArchiveSha256 = '5308c1fa34e967b38c4386970f123a3e67a2ea5532c1e144db577b95c56afdf0'
-$expectedManifestSha256 = '204e45e99779779b4de6620f6e17219ada695c1845d747032d0ad5f6dd5984ba'
-$releaseId = 'v11-20260926-app-refresh'
+$releaseUrl = 'https://github.com/Farkoal2128/autoclip-runtime/releases/download/v0.1.0-dev0-windows-v11-20260926-notice-correction/autoclip-windows-py311-v11-20260926-notice-correction-final.zip'
+$expectedArchiveSha256 = '52a4c6e978f207ecf4bd225e165b6e77a5d8ae04785419821e99cead3014298b'
+$expectedManifestSha256 = 'ccf6785596fb8dcff906175534d529c1c1b66e81a87eb9c99e0a05b635c84fee'
+$releaseId = 'v11-20260926-notice-correction'
 
 if ($ReleaseInfo) {
     [pscustomobject]@{
@@ -91,7 +91,7 @@ if ($PrerequisitesOnly) { Write-Host 'Prerequisites are ready.'; return }
 $downloaded = $false
 try {
     if (-not $ArchivePath) {
-        $ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "autoclip-v11-20260926-app-refresh-$PID.zip"
+        $ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "autoclip-v11-20260926-notice-correction-$PID.zip"
         $downloaded = $true
         try {
             Invoke-WebRequest -Uri $releaseUrl -OutFile $ArchivePath

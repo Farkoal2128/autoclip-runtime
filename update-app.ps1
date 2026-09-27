@@ -21,7 +21,7 @@ $appStatePath = Join-Path $baseFull 'app-active.json'
 $launcherPath = Join-Path $baseFull 'Start-AutoClip.ps1'
 $desktopLauncherPath = Join-Path $baseFull 'Start-AutoClip-Desktop.ps1'
 $manifestUrl = 'https://raw.githubusercontent.com/Farkoal2128/autoclip-runtime/main/app-release.json'
-$expectedManifestSha256 = '357b6c98875aa7336395dd10d3ca77416fea5ace763046aaa04cdc4eb278a896'
+$expectedManifestSha256 = 'f674b742e3ac69e0b1ea29d82f0870ce2383bec8895c70bac38d95360c6e0e22'
 
 function Assert-Id([string]$Value) {
     if ($Value -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') { throw "Invalid release identifier: $Value" }
@@ -89,6 +89,12 @@ function Read-AppManifest([string]$Path) {
     Assert-Id ([string]$manifest.app_id)
     Assert-Id ([string]$manifest.required_runtime)
     Assert-Sha ([string]$manifest.runtime_manifest_sha256)
+    if ($manifest.PSObject.Properties.Name -contains 'compatible_runtimes') {
+        foreach ($compatible in @($manifest.compatible_runtimes)) {
+            Assert-Id ([string]$compatible.release_id)
+            Assert-Sha ([string]$compatible.manifest_sha256)
+        }
+    }
     Assert-Sha ([string]$manifest.wheel_sha256)
     if ([long]$manifest.wheel_size -le 0) { throw 'Invalid app wheel size.' }
     return $manifest
@@ -291,13 +297,20 @@ try {
         throw 'The downloaded app manifest SHA-256 does not match the pinned release.'
     }
 $manifest = Read-AppManifest $ManifestPath
-if ($manifest.required_runtime -ne $runtime.state.current.release_id -or
-    $manifest.runtime_manifest_sha256 -ne $runtime.state.current.manifest_sha256) {
+$runtimeMatches = ($manifest.required_runtime -eq $runtime.state.current.release_id -and
+    $manifest.runtime_manifest_sha256 -eq $runtime.state.current.manifest_sha256)
+foreach ($compatible in @($manifest.compatible_runtimes)) {
+    if ($compatible -and $compatible.release_id -eq $runtime.state.current.release_id -and
+        $compatible.manifest_sha256 -eq $runtime.state.current.manifest_sha256) {
+        $runtimeMatches = $true
+    }
+}
+if (-not $runtimeMatches) {
     throw 'The app requires a different runtime. Use the full updater.'
 }
 $app = [ordered]@{
     app_id = [string]$manifest.app_id
-    required_runtime = [string]$manifest.required_runtime
+    required_runtime = [string]$runtime.state.current.release_id
     wheel_sha256 = [string]$manifest.wheel_sha256
 }
 if ($existing -and $existing.current.app_id -eq $app.app_id) {

@@ -161,6 +161,22 @@ try {
     if ($appState.current.app_id -ne 'fixture-app-v2') {
         throw 'Repeated rollback did not select the retained app.'
     }
+    $manifest.app_id = 'fixture-compatible-runtime'
+    $manifest.required_runtime = 'another-runtime'
+    $manifest.runtime_manifest_sha256 = ('0' * 64)
+    $manifest['compatible_runtimes'] = @(@{
+        release_id = $release.ReleaseId
+        manifest_sha256 = $release.ManifestSha256
+    })
+    $manifest.wheel_sha256 = (Get-FileHash -LiteralPath $WheelPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $manifest.wheel_size = (Get-Item -LiteralPath $WheelPath).Length
+    [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 5))
+    & $updater -BaseRoot $fixture -ManifestPath $manifestPath -WheelPath $WheelPath -NoShortcut
+    $appState = Get-Content -LiteralPath (Join-Path $fixture 'app-active.json') -Raw | ConvertFrom-Json
+    if ($appState.current.app_id -ne 'fixture-compatible-runtime' -or
+        $appState.current.required_runtime -ne $release.ReleaseId) {
+        throw 'A compatible prior runtime was not retained as the active app runtime.'
+    }
     Write-Output 'App-only stage, no-op, failure preservation and rollback passed.'
 } finally {
     $junction = Join-Path $fixture $release.ReleaseId

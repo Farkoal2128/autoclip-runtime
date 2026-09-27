@@ -27,7 +27,7 @@ download is unavailable. It downloads the pinned release archive,
 checks its SHA-256 and every packaged file, then installs all 79 Python wheels
 offline, including the CUDA 12 cuBLAS and cuDNN runtime packages used by
 AutoClip's GPU Whisper path. It installs under
-`%LOCALAPPDATA%\AutoClip\v11-20260926-app-refresh` by default and will not overwrite
+`%LOCALAPPDATA%\AutoClip\v11-20260926-notice-correction` by default and will not overwrite
 an existing installation. The release archive is about 1.34 GB.
 If an earlier installer stopped at `Python 3.11.16 installation failed`,
 rerun the same one-paste command to install this release in its new directory.
@@ -41,7 +41,7 @@ is missing. The installer may prompt for system permission or package terms.
 After installation:
 
 ```powershell
-& "$env:LOCALAPPDATA\AutoClip\v11-20260926-app-refresh\Start-AutoClip.ps1"
+& "$env:LOCALAPPDATA\AutoClip\v11-20260926-notice-correction\Start-AutoClip.ps1"
 ```
 
 AutoClip then opens locally at `http://127.0.0.1:8000`. Ollama is optional for
@@ -72,7 +72,7 @@ your GPU and these CUDA 12 libraries is still required for GPU inference.
 To inspect acceleration and dependencies, run:
 
 ```powershell
-& "$env:LOCALAPPDATA\AutoClip\v11-20260926-app-refresh\.venv\Scripts\autoclip.exe" doctor
+& "$env:LOCALAPPDATA\AutoClip\v11-20260926-notice-correction\.venv\Scripts\autoclip.exe" doctor
 ```
 
 If you installed the earlier `v11-no-raw-zip` runtime and see a missing
@@ -105,12 +105,16 @@ Windows native wheels into compatible packages.
 
 ## Release contents
 
-`autoclip-windows-py311-v11-20260926-app-refresh.zip` contains:
+`autoclip-windows-py311-v11-20260926-notice-correction-final.zip` contains:
 
 - `wheelhouse/`: 79 exact Python wheels, including the Windows PyAV and
   CTranslate2 replacements and two NVIDIA CUDA 12 runtime wheels.
 - `notices-and-source/`: the accompanying license/notice texts, source
-  archives, build records, NVIDIA wheel licenses and native-file inventory.
+  archives, build records, NVIDIA wheel licenses, the cuDNN 9.10.2 terms and
+  acknowledgements, and native-file inventory. The exact FFmpeg 8.1.2
+  [source archive](https://github.com/Farkoal2128/autoclip-runtime/releases/download/v0.1.0-dev0-windows-v11-20260926-notice-correction/ffmpeg-8.1.2.tar.xz)
+  is also a separate release asset; its configuration and build records are
+  under `notices-and-source/source-and-build/` inside the ZIP.
 - `release-manifest.json`: SHA-256 and size of every packaged file.
 - `Start-AutoClip.ps1` and `LICENSE`.
 
@@ -121,11 +125,13 @@ GitHub is not the installed application; the wheel in the release asset is.
 The two NVIDIA wheels are pinned to `nvidia-cublas-cu12==12.4.5.8` and
 `nvidia-cudnn-cu12==9.10.2.21`. Their exact wheel hashes, bundled license
 texts and DLL inventory are in the release manifest and
-`notices-and-source/nvidia-runtime/`. The cuDNN 9.10.2
+`notices-and-source/nvidia-runtime/`. The versioned cuDNN 9.10.2
 [acknowledgements](https://docs.nvidia.com/deeplearning/cudnn/backend/v9.10.2/reference/acknowledgements.html)
 and [terms](https://docs.nvidia.com/deeplearning/cudnn/backend/v9.10.2/reference/eula.html)
-are additional distribution references; this technical packaging check is
-not a final legal clearance of the new asset.
+are also preserved in the corrected archive. The wheel's historical
+`License.txt` mentions `cudnn64_7.dll`; it is retained unchanged and does
+not decide the cuDNN 9 terms. This technical packaging check is not a final
+legal clearance of the asset.
 
 ## Updating
 
@@ -238,7 +244,10 @@ frontend, Python and native dependency notices accompany the release in
 
 ## Release status
 
-This refresh includes the Lavender Mist light theme and local Ollama highlight
+This versioned notice correction preserves the same 79 wheel bytes as the
+app-refresh release while replacing its historical 77-wheel sidecar heading
+and adding NVIDIA's versioned cuDNN 9.10.2 reference material. It also
+includes the Lavender Mist light theme and local Ollama highlight
 diagnostics with a conservative adaptive workload controller. A short paired
 local-model run did not establish a speedup or equivalent clip quality; longer
 creator evaluation remains open. The earlier creator-accepted CR-09G download
@@ -246,7 +255,7 @@ controls and CR-10 optional automatic clip-only transcription remain included.
 Export all selected creates only the edited ZIP; previously created
 source-resolution ZIP files and their download URLs remain available. Earlier
 V11 installations remain separate. The archive SHA-256 pinned in `install.ps1`
-is `5308c1fa34e967b38c4386970f123a3e67a2ea5532c1e144db577b95c56afdf0`.
+is `52a4c6e978f207ecf4bd225e165b6e77a5d8ae04785419821e99cead3014298b`.
 
 The full updater downloads about 1.34 GB when installing this runtime. For
 application-only changes on an already installed compatible V11 runtime, the

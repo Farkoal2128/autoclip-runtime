@@ -7,9 +7,15 @@ param(
 $ErrorActionPreference = 'Stop'
 $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
 $installer = & $InstallerPath -ReleaseInfo -PrerequisitesOnly
-if ($manifest.schema_version -ne 1 -or
-    $manifest.required_runtime -ne $installer.ReleaseId -or
-    $manifest.runtime_manifest_sha256 -ne $installer.ManifestSha256) {
+$runtimeMatches = ($manifest.required_runtime -eq $installer.ReleaseId -and
+    $manifest.runtime_manifest_sha256 -eq $installer.ManifestSha256)
+foreach ($compatible in @($manifest.compatible_runtimes)) {
+    if ($compatible -and $compatible.release_id -eq $installer.ReleaseId -and
+        $compatible.manifest_sha256 -eq $installer.ManifestSha256) {
+        $runtimeMatches = $true
+    }
+}
+if ($manifest.schema_version -ne 1 -or -not $runtimeMatches) {
     throw 'The app manifest does not identify the pinned runtime.'
 }
 $manifestHash = (Get-FileHash -LiteralPath $ManifestPath -Algorithm SHA256).Hash.ToLowerInvariant()

@@ -9,8 +9,8 @@ $installer = Join-Path $repoRoot 'install.ps1'
 $updater = Join-Path $repoRoot 'update.ps1'
 
 $release = & $installer -ReleaseInfo -PrerequisitesOnly
-if ($release.ReleaseId -ne 'v11-20260926-app-refresh' -or
-    $release.ArchiveSha256 -ne '5308c1fa34e967b38c4386970f123a3e67a2ea5532c1e144db577b95c56afdf0') {
+if ($release.ReleaseId -ne 'v11-20260926-notice-correction' -or
+    $release.ArchiveSha256 -ne '52a4c6e978f207ecf4bd225e165b6e77a5d8ae04785419821e99cead3014298b') {
     throw 'Installer did not report the pinned release identity.'
 }
 if (-not (Test-Path -LiteralPath $updater -PathType Leaf)) {
@@ -160,7 +160,7 @@ if ($ArchivePath) {
     $fixtureInstaller = Join-Path $BaseRoot 'next-version-installer.ps1'
     $installerSource = [IO.File]::ReadAllText($installer)
     $nextSource = $installerSource.Replace(
-        "releaseId = 'v11-20260926-app-refresh'",
+        "releaseId = 'v11-20260926-notice-correction'",
         "releaseId = 'v11-update-fixture'"
     )
     if ($nextSource -eq $installerSource) { throw 'Could not prepare the next-version fixture.' }
