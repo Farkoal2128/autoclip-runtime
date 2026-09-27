@@ -17,6 +17,35 @@ spec.loader.exec_module(module)
 
 
 class SourceRoutedReleaseTest(unittest.TestCase):
+    def test_sbom_packet_requires_exact_files_and_component_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            packet = root / "packet" / "notices-and-source"
+            packet.mkdir(parents=True)
+            legal = packet / "sbom-legal" / "example" / "LICENSE"
+            legal.parent.mkdir(parents=True)
+            legal.write_bytes(b"grant")
+            relative = "notices-and-source/sbom-legal/example/LICENSE"
+            manifest = {"schema_version": 1, "file_count": 1, "files": [{
+                "path": relative, "bytes": 5,
+                "sha256": hashlib.sha256(b"grant").hexdigest()}]}
+            (packet / "sbom-packet-manifest.json").write_text(json.dumps(manifest))
+            component = {"wheel": "example.whl", "wheel_sha256": "a" * 64,
+                         "purl": "pkg:cargo/example@1", "installed_legal_paths": [relative],
+                         "installed_source_path": None, "source_url": "https://example.org/source",
+                         "source_sha256": "b" * 64}
+            (packet / "sbom-component-index.json").write_text(json.dumps({
+                "schema_version": 1, "component_count": 1, "components": [component]}))
+            plan = {"components": [{"wheel": "example.whl", "wheel_sha256": "a" * 64,
+                                    "purl": "pkg:cargo/example@1"}]}
+            target = root / "target"
+            target.mkdir()
+            module.attach_sbom_packet(root / "packet", target, plan)
+            self.assertEqual((target / relative).read_bytes(), b"grant")
+            legal.write_bytes(b"wrong")
+            with self.assertRaisesRegex(ValueError, "SBOM packet member differs"):
+                module.attach_sbom_packet(root / "packet", root / "other", plan)
+
     def test_publisher_manifest_matches_exact_reviewed_wheels(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

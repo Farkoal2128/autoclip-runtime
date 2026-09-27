@@ -172,8 +172,59 @@ def digest(data: bytes) -> str:
     return base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode("ascii")
 
 
+def attach_sbom_packet(packet: Path, target: Path, plan: dict) -> None:
+    """Verify every staged notice/source byte before copying it into a candidate."""
+    base = packet / "notices-and-source"
+    manifest = json.loads((base / "sbom-packet-manifest.json").read_text(encoding="utf-8"))
+    index = json.loads((base / "sbom-component-index.json").read_text(encoding="utf-8"))
+    files = manifest.get("files", [])
+    components = index.get("components", [])
+    if (manifest.get("schema_version") != 1 or manifest.get("file_count") != len(files)
+            or index.get("schema_version") != 1 or index.get("component_count") != len(components)):
+        raise ValueError("Unsupported SBOM legal packet")
+    expected = {(row["wheel"], row["wheel_sha256"], row["purl"])
+                for row in plan["components"]}
+    actual = {(row["wheel"], row["wheel_sha256"], row["purl"]) for row in components}
+    if len(expected) != len(plan["components"]) or len(actual) != len(components) or actual != expected:
+        raise ValueError("SBOM packet component identity differs from plan")
+    verified = {}
+    for row in files:
+        name = row["path"]
+        relative = Path(name)
+        if (relative.is_absolute() or ".." in relative.parts or "\\" in name
+                or not name.startswith("notices-and-source/") or name in verified):
+            raise ValueError(f"Unsafe SBOM packet member: {name}")
+        original = packet / relative
+        if (not original.is_file() or original.stat().st_size != row["bytes"]
+                or hashlib.sha256(original.read_bytes()).hexdigest() != row["sha256"]):
+            raise ValueError(f"SBOM packet member differs: {name}")
+        verified[name] = original
+    for row in components:
+        if not row.get("installed_legal_paths") or any(
+            name not in verified for name in row["installed_legal_paths"]
+        ) or (row.get("installed_source_path") and row["installed_source_path"] not in verified):
+            raise ValueError(f"SBOM packet lacks fulfillment paths: {row['purl']}")
+    for name, original in verified.items():
+        destination = target / name
+        if destination.exists():
+            raise ValueError(f"SBOM packet collides with candidate member: {name}")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(original, destination)
+    shutil.copy2(base / "sbom-packet-manifest.json",
+                 target / "notices-and-source" / "sbom-packet-manifest.json")
+    by_key = {(row["wheel"], row["wheel_sha256"], row["purl"]): row for row in components}
+    for row in plan["components"]:
+        source = by_key[(row["wheel"], row["wheel_sha256"], row["purl"])]
+        row["notice_status"] = "SBOM_notice_source_packet_staged"
+        row["source_url"] = source["source_url"]
+        row["source_sha256"] = source["source_sha256"]
+        row["installed_legal_paths"] = source["installed_legal_paths"]
+        row["installed_source_path"] = source["installed_source_path"]
+
+
 def build_publisher_routed_release(source: Path, target: Path, pins: Path,
-                                   sbom_plan: Path | None = None) -> None:
+                                   sbom_plan: Path | None = None,
+                                   sbom_packet: Path | None = None) -> None:
     """Turn a verified source-build candidate into a publisher-routed candidate."""
     if target.exists():
         raise ValueError(f"Candidate output already exists: {target}")
@@ -285,9 +336,18 @@ def build_publisher_routed_release(source: Path, target: Path, pins: Path,
         for component in plan["components"]:
             if wheel_hashes.get(component["wheel"]) != component["wheel_sha256"]:
                 raise ValueError(f"SBOM plan wheel hash mismatch: {component['wheel']}")
+        if sbom_packet:
+            attach_sbom_packet(sbom_packet, target, plan)
+            for row in index["packages"]:
+                if row.get("sbom_components"):
+                    row["notice_disposition"] = "SBOM_notice_source_packet_staged"
+                    row["technical_state"] = "legal_review_pending"
+            index_path.write_text(json.dumps(index, indent=2) + "\n", encoding="utf-8")
         destination = target / "notices-and-source" / "sbom-component-plan.json"
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(sbom_plan, destination)
+        destination.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
+    elif sbom_packet:
+        raise ValueError("SBOM legal packet requires a component plan")
     (target / "publisher-wheel-manifest.json").write_text(
         json.dumps(specification, indent=2) + "\n", encoding="utf-8")
     (target / "distribution-inventory.json").write_text(json.dumps({
@@ -497,9 +557,11 @@ def main() -> None:
     parser.add_argument("--source-cache-dir", type=Path, help="Cache of pinned upstream source archives")
     parser.add_argument("--publisher-wheels", type=Path, help="Convert an existing source-build candidate to publisher-routed wheels")
     parser.add_argument("--sbom-plan", type=Path, help="Conservative SBOM component obligation worklist")
+    parser.add_argument("--sbom-legal-packet", type=Path, help="Verified staged SBOM legal/source packet")
     args = parser.parse_args()
     if args.publisher_wheels:
-        build_publisher_routed_release(args.source, args.target, args.publisher_wheels, args.sbom_plan)
+        build_publisher_routed_release(args.source, args.target, args.publisher_wheels,
+                                       args.sbom_plan, args.sbom_legal_packet)
     else:
         build_release(args.source, args.target, build_native_from_source=args.build_native_from_source,
                       review_index=args.review_index, source_cache_dir=args.source_cache_dir)
