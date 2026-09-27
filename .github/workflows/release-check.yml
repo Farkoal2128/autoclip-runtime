@@ -19,7 +19,7 @@ jobs:
       - name: Parse installer and launch scripts
         shell: pwsh
         run: |
-          foreach ($name in @('install.ps1', 'update.ps1', 'update-app.ps1', 'Start-AutoClip.ps1', '.github/tests/Update.Tests.ps1', '.github/tests/AppUpdate.Tests.ps1', '.github/tests/InstallRetry.Tests.ps1', '.github/tests/GpuRuntime.Tests.ps1', '.github/tests/ReleasePin.Tests.ps1', '.github/tests/ReleaseDownload.Tests.ps1', '.github/scripts/verify-public-release.ps1', '.github/scripts/verify-public-app-release.ps1')) {
+          foreach ($name in @('install.ps1', 'install-source-routed.ps1', 'install-source-build.ps1', 'build-native-from-source.ps1', 'update.ps1', 'update-app.ps1', 'upstream-assets.ps1', 'Start-AutoClip.ps1', '.github/tests/Update.Tests.ps1', '.github/tests/AppUpdate.Tests.ps1', '.github/tests/InstallRetry.Tests.ps1', '.github/tests/GpuRuntime.Tests.ps1', '.github/tests/ReleasePin.Tests.ps1', '.github/tests/ReleaseDownload.Tests.ps1', '.github/tests/UpstreamAssets.Tests.ps1', '.github/tests/ExternalCacheForward.Tests.ps1', '.github/scripts/verify-public-release.ps1', '.github/scripts/verify-public-app-release.ps1')) {
             $tokens = $null
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $name), [ref]$tokens, [ref]$errors) | Out-Null
@@ -31,6 +31,18 @@ jobs:
       - name: Release pin regression cases
         shell: pwsh
         run: ./.github/tests/ReleasePin.Tests.ps1
+      - name: Pinned upstream asset regression cases
+        shell: pwsh
+        run: ./.github/tests/UpstreamAssets.Tests.ps1
+      - name: Source-routed package regression cases
+        shell: pwsh
+        run: |
+          python ./.github/tests/test_source_routed_release.py
+          python ./.github/tests/test_verify_install_wheels.py
+          python -m py_compile scripts/build-source-routed-release.py scripts/inventory-source-routed-release.py scripts/verify-native-source-wheels.py scripts/verify-install-wheels.py
+      - name: Publisher-cache updater forwarding
+        shell: pwsh
+        run: ./.github/tests/ExternalCacheForward.Tests.ps1
       - name: Reject unsupported platform
         if: runner.os != 'Windows'
         shell: pwsh

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "artifacts": [
+    {
+      "owner": "onnxruntime-1.30.0",
+      "component": "Eigen",
+      "relationship": "upstream dependency source lead; exact binary incorporation remains for review",
+      "filename": "eigen-1d8b82b0740839c0de7f1242a3585e3390ff5f33.zip",
+      "url": "https://github.com/eigen-mirror/eigen/archive/1d8b82b0740839c0de7f1242a3585e3390ff5f33/eigen-1d8b82b0740839c0de7f1242a3585e3390ff5f33.zip",
+      "bytes": 4075744,
+      "sha256": "6a60d76351f97132669daeeb721d6bf14b008101883ad2d687a3201c5c461eb0"
+    },
+    {
+      "owner": "certifi-2026.7.22",
+      "component": "certifi preferred source and CA bundle",
+      "relationship": "source distribution; Python files and cacert.pem match selected wheel bytes",
+      "filename": "certifi-2026.7.22.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/a3/c2/24167ea9858356b47a87a50d39908bfdb72ceeefe0041586e704e5376b3a/certifi-2026.7.22.tar.gz",
+      "bytes": 138112,
+      "sha256": "741e2c3b351ddf169a738da9f2c048608ff7f2c5cc02f1ebc6b118bb090d5d55"
+    }
+  ]
+}

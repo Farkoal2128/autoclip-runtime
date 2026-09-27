@@ -35,6 +35,14 @@ unique exact-byte release ID and a schema-versioned manifest naming its
 share one runtime. A changed runtime dependency or ABI gets a new ID; the
 old runtime remains available while referenced by current or rollback state.
 
+For a recipient-side native build, the immutable ID identifies the source
+commits/archive hashes, build recipes and allowed configuration. Generated
+wheel bytes can differ between hosts. The installer records their exact local
+hashes and the installed native DLL hashes in a build receipt, verifies wheel
+integrity and runtime behavior before activation, and checks the installed
+hashes against that receipt on later update/rollback. Such a release needs
+clean-machine build and review evidence before it becomes a public pin.
+
 ## Update and rollback
 
 The updater fetches a small immutable release manifest, validates its schema

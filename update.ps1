@@ -2,6 +2,10 @@ param(
     [string]$BaseRoot,
     [string]$InstallerPath,
     [string]$ArchivePath,
+    [string]$ExternalCache,
+    [string]$NativeBuildRoot,
+    [string]$MsysBash,
+    [string]$CudaRoot,
     [string]$ShortcutPath,
     [string]$PreviousReleaseId,
     [switch]$Rollback,
@@ -144,6 +148,35 @@ function Test-InstalledRelease($Release) {
     $actualManifest = (Get-FileHash -LiteralPath $manifest -Algorithm SHA256).Hash
     if ($actualManifest -ne $expectedManifest) {
         throw "The $releaseId release manifest does not match its pinned hash."
+    }
+    $manifestData = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+    if ($manifestData.native_build) {
+        $receiptPath = Join-Path $root 'native-build-receipt.json'
+        if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) {
+            throw "The $releaseId native build receipt is missing."
+        }
+        $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+        $installedFiles = @($receipt.installed_files)
+        if ($installedFiles.Count -ne 8) { throw "The $releaseId native build receipt is incomplete." }
+        $rootFull = [IO.Path]::GetFullPath($root).TrimEnd('\') + '\'
+        $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+        foreach ($entry in $installedFiles) {
+            $relative = [string]$entry.path
+            if ($relative -notmatch '^\.venv/Lib/site-packages/(av\.libs/[^/]+\.dll|ctranslate2/ctranslate2\.dll)$' -or
+                -not $seen.Add($relative)) {
+                throw "The $releaseId native build receipt has an invalid path: $relative"
+            }
+            $file = [IO.Path]::GetFullPath((Join-Path $root $relative))
+            if (-not $file.StartsWith($rootFull, [StringComparison]::OrdinalIgnoreCase) -or
+                -not (Test-Path -LiteralPath $file -PathType Leaf) -or
+                (Get-Item -LiteralPath $file).Length -ne [long]$entry.bytes -or
+                (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$entry.sha256) {
+                throw "The $releaseId installed native file differs from its build receipt: $relative"
+            }
+        }
+        if (-not $seen.Contains('.venv/Lib/site-packages/ctranslate2/ctranslate2.dll')) {
+            throw "The $releaseId native build receipt lacks CTranslate2."
+        }
     }
 
     $smokeHome = Join-Path ([IO.Path]::GetTempPath()) ('autoclip-update-check-' + [guid]::NewGuid().ToString('N'))
@@ -352,6 +385,10 @@ try {
     if (-not $validExisting) {
         $arguments = @{ InstallRoot = $targetRoot }
         if ($ArchivePath) { $arguments.ArchivePath = $ArchivePath }
+        if ($ExternalCache) { $arguments.ExternalCache = $ExternalCache }
+        if ($NativeBuildRoot) { $arguments.NativeBuildRoot = $NativeBuildRoot }
+        if ($MsysBash) { $arguments.MsysBash = $MsysBash }
+        if ($CudaRoot) { $arguments.CudaRoot = $CudaRoot }
         & $InstallerPath @arguments
     }
     $previous = if ($state -and $state.current.release_id -eq $releaseId) {
