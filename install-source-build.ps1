@@ -63,6 +63,7 @@ function Update-ProcessPath {
     $user = [Environment]::GetEnvironmentVariable('Path', 'User')
     $env:Path = @($env:Path, $machine, $user, (Join-Path $env:USERPROFILE '.local\bin')) -join ';'
 }
+Update-ProcessPath
 
 function Install-WingetPackage([string]$Package, [string]$Version, [string]$Override = '') {
     $winget = Get-Command winget -ErrorAction SilentlyContinue

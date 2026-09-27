@@ -5,6 +5,9 @@ $tokens = $null
 $errors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseInput($installer, [ref]$tokens, [ref]$errors)
 if ($errors) { throw $errors[0] }
+if ($installer -notmatch '(?s)function Update-ProcessPath\s*\{.*?\}\s*Update-ProcessPath\s*function Install-WingetPackage') {
+    throw 'Installer must refresh machine and user PATH before probing existing tools.'
+}
 
 # Exercise package selection without mutating the test machine.
 $helper = $ast.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Install-WingetPackage' }, $true)
