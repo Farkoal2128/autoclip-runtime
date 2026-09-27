@@ -1,0 +1,373 @@
+param(
+    [string]$BaseRoot,
+    [string]$ManifestPath,
+    [string]$WheelPath,
+    [string]$ShortcutPath,
+    [switch]$Rollback,
+    [switch]$NoShortcut
+)
+
+$ErrorActionPreference = 'Stop'
+if (-not $IsWindows -and $PSVersionTable.PSEdition -eq 'Core') {
+    throw 'The app-only updater supports Windows x64 only.'
+}
+if (-not [Environment]::Is64BitOperatingSystem) {
+    throw 'The app-only updater requires 64-bit Windows.'
+}
+if (-not $BaseRoot) { $BaseRoot = Join-Path $env:LOCALAPPDATA 'AutoClip' }
+$baseFull = [IO.Path]::GetFullPath($BaseRoot).TrimEnd('\')
+$runtimeStatePath = Join-Path $baseFull 'active.json'
+$appStatePath = Join-Path $baseFull 'app-active.json'
+$launcherPath = Join-Path $baseFull 'Start-AutoClip.ps1'
+$desktopLauncherPath = Join-Path $baseFull 'Start-AutoClip-Desktop.ps1'
+$manifestUrl = 'https://raw.githubusercontent.com/Farkoal2128/autoclip-runtime/main/app-release.json'
+$expectedManifestSha256 = '357b6c98875aa7336395dd10d3ca77416fea5ace763046aaa04cdc4eb278a896'
+
+function Assert-Id([string]$Value) {
+    if ($Value -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') { throw "Invalid release identifier: $Value" }
+}
+
+function Assert-Sha([string]$Value) {
+    if ($Value -notmatch '^[0-9a-fA-F]{64}$') { throw "Invalid SHA-256: $Value" }
+}
+
+function Assert-AppStopped {
+    $client = New-Object Net.Sockets.TcpClient
+    try {
+        $attempt = $client.BeginConnect('127.0.0.1', 8000, $null, $null)
+        if ($attempt.AsyncWaitHandle.WaitOne(500)) {
+            try {
+                $client.EndConnect($attempt)
+                throw 'Local port 8000 is in use. Quit AutoClip before updating.'
+            } catch [Net.Sockets.SocketException] { }
+        }
+    } finally { $client.Close() }
+}
+
+function Write-AtomicText([string]$Path, [string]$Value) {
+    $temporary = Join-Path (Split-Path -Parent $Path) ('.autoclip-write-' + [guid]::NewGuid().ToString('N'))
+    try {
+        [IO.File]::WriteAllText($temporary, $Value, (New-Object Text.UTF8Encoding($false)))
+        if ([IO.File]::Exists($Path)) {
+            $backup = $Path + '.backup-' + [guid]::NewGuid().ToString('N')
+            [IO.File]::Replace($temporary, $Path, $backup)
+            [IO.File]::Delete($backup)
+        } else { [IO.File]::Move($temporary, $Path) }
+    } finally {
+        if ([IO.File]::Exists($temporary)) { [IO.File]::Delete($temporary) }
+    }
+}
+
+function Read-RuntimeState {
+    if (-not (Test-Path -LiteralPath $runtimeStatePath -PathType Leaf)) {
+        throw 'No verified runtime is selected. Use the full Windows installer first.'
+    }
+    $state = Get-Content -LiteralPath $runtimeStatePath -Raw | ConvertFrom-Json
+    if ($state.schema_version -ne 1 -or -not $state.current) {
+        throw 'The installed runtime state is unsupported.'
+    }
+    Assert-Id ([string]$state.current.release_id)
+    Assert-Sha ([string]$state.current.manifest_sha256)
+    $root = Join-Path $baseFull ([string]$state.current.release_id)
+    $manifest = Join-Path $root 'release-manifest.json'
+    $python = Join-Path $root '.venv\Scripts\python.exe'
+    if (-not (Test-Path -LiteralPath $manifest -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $python -PathType Leaf) -or
+        -not (Test-Path -LiteralPath (Join-Path $root '.install-complete') -PathType Leaf)) {
+        throw 'The selected runtime is incomplete. Use the full updater to repair it.'
+    }
+    if ((Get-FileHash -LiteralPath $manifest -Algorithm SHA256).Hash -ne $state.current.manifest_sha256) {
+        throw 'The selected runtime manifest hash does not match active.json.'
+    }
+    return [pscustomobject]@{ state = $state; root = $root; python = $python }
+}
+
+function Read-AppManifest([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "App manifest is missing: $Path" }
+    $manifest = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    if ($manifest.schema_version -ne 1) { throw 'Unsupported app manifest schema.' }
+    Assert-Id ([string]$manifest.app_id)
+    Assert-Id ([string]$manifest.required_runtime)
+    Assert-Sha ([string]$manifest.runtime_manifest_sha256)
+    Assert-Sha ([string]$manifest.wheel_sha256)
+    if ([long]$manifest.wheel_size -le 0) { throw 'Invalid app wheel size.' }
+    return $manifest
+}
+
+function Test-AppLayer($App) {
+    Assert-Id ([string]$App.app_id)
+    Assert-Sha ([string]$App.wheel_sha256)
+    $root = Join-Path (Join-Path $baseFull 'apps') ([string]$App.app_id)
+    $wheel = Join-Path $root 'autoclip.whl'
+    $site = Join-Path $root 'site'
+    if (-not (Test-Path -LiteralPath $wheel -PathType Leaf) -or
+        -not (Test-Path -LiteralPath (Join-Path $site 'autoclip\app.py') -PathType Leaf)) {
+        throw 'The app layer is incomplete.'
+    }
+    if ((Get-FileHash -LiteralPath $wheel -Algorithm SHA256).Hash -ne $App.wheel_sha256) {
+        throw 'The app layer wheel hash does not match its manifest.'
+    }
+    return $site
+}
+
+function Test-AppHealth($Python, [string]$Site) {
+    $oldHome = [Environment]::GetEnvironmentVariable('AUTOCLIP_HOME', 'Process')
+    $oldPythonPath = [Environment]::GetEnvironmentVariable('PYTHONPATH', 'Process')
+    $smokeHome = Join-Path ([IO.Path]::GetTempPath()) ('autoclip-app-check-' + [guid]::NewGuid().ToString('N'))
+    try {
+        $env:AUTOCLIP_HOME = $smokeHome
+        $env:PYTHONPATH = $Site
+        & $Python -c "import pathlib; from fastapi.testclient import TestClient; from autoclip.app import create_app; import autoclip; assert pathlib.Path(autoclip.__file__).resolve().is_relative_to(pathlib.Path(r'$Site').resolve()); c = TestClient(create_app()); c.__enter__(); assert c.get('/api/health').status_code == 200; assert c.get('/').status_code == 200; c.__exit__(None, None, None)"
+        if ($LASTEXITCODE -ne 0) { throw 'The staged app failed isolated health/home.' }
+    } finally {
+        [Environment]::SetEnvironmentVariable('AUTOCLIP_HOME', $oldHome, 'Process')
+        [Environment]::SetEnvironmentVariable('PYTHONPATH', $oldPythonPath, 'Process')
+        if (Test-Path -LiteralPath $smokeHome) {
+            $tempFull = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+            $smokeFull = [IO.Path]::GetFullPath($smokeHome)
+            if (-not $smokeFull.StartsWith($tempFull, [StringComparison]::OrdinalIgnoreCase)) {
+                throw 'Refusing to remove smoke data outside the temporary directory.'
+            }
+            Remove-Item -LiteralPath $smokeFull -Recurse -Force
+        }
+    }
+}
+
+function Write-StableLauncher {
+    $source = @'
+$ErrorActionPreference = 'Stop'
+$base = $PSScriptRoot
+$runtimeState = Get-Content -LiteralPath (Join-Path $base 'active.json') -Raw | ConvertFrom-Json
+$releaseId = [string]$runtimeState.current.release_id
+if ($releaseId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') { throw 'Invalid active runtime identifier.' }
+$runtimeRoot = Join-Path $base $releaseId
+$appStatePath = Join-Path $base 'app-active.json'
+if (Test-Path -LiteralPath $appStatePath -PathType Leaf) {
+    $appState = Get-Content -LiteralPath $appStatePath -Raw | ConvertFrom-Json
+    $appId = [string]$appState.current.app_id
+    if ($appId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
+        throw 'The selected app identifier is invalid.'
+    }
+    if ($appState.current.required_runtime -eq $releaseId) {
+        $site = Join-Path (Join-Path (Join-Path $base 'apps') $appId) 'site'
+        if (-not (Test-Path -LiteralPath (Join-Path $site 'autoclip\app.py') -PathType Leaf)) {
+            throw 'The selected app layer is missing.'
+        }
+        $env:PYTHONPATH = $site
+        $env:AUTOCLIP_MANAGED_DESKTOP_LAUNCHER = Join-Path $base 'Start-AutoClip-Desktop.ps1'
+        & (Join-Path $runtimeRoot '.venv\Scripts\python.exe') -m autoclip.cli serve
+        return
+    }
+}
+& (Join-Path $runtimeRoot 'Start-AutoClip.ps1')
+'@
+    Write-AtomicText $launcherPath $source
+}
+
+function Write-DesktopLauncher {
+    $source = @'
+$ErrorActionPreference = 'Stop'
+$base = $PSScriptRoot
+$runtimeState = Get-Content -LiteralPath (Join-Path $base 'active.json') -Raw | ConvertFrom-Json
+$releaseId = [string]$runtimeState.current.release_id
+if ($releaseId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') { throw 'Invalid active runtime identifier.' }
+$runtimeRoot = Join-Path $base $releaseId
+$appStatePath = Join-Path $base 'app-active.json'
+if (Test-Path -LiteralPath $appStatePath -PathType Leaf) {
+    $appState = Get-Content -LiteralPath $appStatePath -Raw | ConvertFrom-Json
+    $appId = [string]$appState.current.app_id
+    if ($appId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') { throw 'Invalid active app identifier.' }
+    if ($appState.current.required_runtime -eq $releaseId) {
+        $site = Join-Path (Join-Path (Join-Path $base 'apps') $appId) 'site'
+        if (-not (Test-Path -LiteralPath (Join-Path $site 'autoclip\app.py') -PathType Leaf)) {
+            throw 'The active app layer is missing.'
+        }
+        $env:PYTHONPATH = $site
+        $env:AUTOCLIP_MANAGED_DESKTOP_LAUNCHER = $PSCommandPath
+    }
+}
+& (Join-Path $runtimeRoot '.venv\Scripts\pythonw.exe') -m autoclip.desktop
+'@
+    Write-AtomicText $desktopLauncherPath $source
+}
+
+function Update-DesktopShortcut {
+    if ($NoShortcut) { return $null }
+    $shortcutPath = $ShortcutPath
+    if (-not $shortcutPath) {
+        $desktop = [Environment]::GetFolderPath('DesktopDirectory')
+        if (-not $desktop) { return $null }
+        $shortcutPath = Join-Path $desktop 'AutoClip.lnk'
+    }
+    if (-not (Test-Path -LiteralPath $shortcutPath -PathType Leaf)) { return $null }
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($shortcutPath)
+    $target = [IO.Path]::GetFullPath([string]$shortcut.TargetPath)
+    $managed = $target.StartsWith(($baseFull + '\'), [StringComparison]::OrdinalIgnoreCase) -or
+        ([string]$shortcut.Arguments).Contains($desktopLauncherPath)
+    if (-not $managed) {
+        Write-Warning 'The existing desktop shortcut points outside the managed runtime. Recreate it from Settings.'
+        return $null
+    }
+    $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $backup = Join-Path ([IO.Path]::GetTempPath()) ('autoclip-app-shortcut-' + [guid]::NewGuid().ToString('N') + '.lnk')
+    Copy-Item -LiteralPath $shortcutPath -Destination $backup
+    try {
+        $shortcut.TargetPath = $powershell
+        $shortcut.Arguments = '-NoProfile -WindowStyle Hidden -File "' + $desktopLauncherPath + '"'
+        $shortcut.WorkingDirectory = $baseFull
+        $shortcut.Save()
+        return $backup
+    } catch {
+        Copy-Item -LiteralPath $backup -Destination $shortcutPath -Force
+        Remove-Item -LiteralPath $backup
+        throw
+    }
+}
+
+function Commit-AppState([string]$Value, [switch]$Remove) {
+    Write-StableLauncher
+    Write-DesktopLauncher
+    $shortcutBackup = Update-DesktopShortcut
+    try {
+        if ($Remove) { Remove-Item -LiteralPath $appStatePath }
+        else { Write-AtomicText $appStatePath $Value }
+    } catch {
+        if ($shortcutBackup) {
+            $path = $ShortcutPath
+            if (-not $path) { $path = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'AutoClip.lnk' }
+            Copy-Item -LiteralPath $shortcutBackup -Destination $path -Force
+        }
+        throw
+    } finally {
+        if ($shortcutBackup -and (Test-Path -LiteralPath $shortcutBackup)) {
+            Remove-Item -LiteralPath $shortcutBackup
+        }
+    }
+}
+
+Assert-AppStopped
+$runtime = Read-RuntimeState
+$existing = $null
+if (Test-Path -LiteralPath $appStatePath -PathType Leaf) {
+    $existing = Get-Content -LiteralPath $appStatePath -Raw | ConvertFrom-Json
+    if ($existing.schema_version -ne 1 -or -not $existing.current) { throw 'Unsupported app activation state.' }
+}
+
+if ($Rollback) {
+    if (-not $existing) { throw 'No app-only update is selected for rollback.' }
+    if ($existing.previous) {
+        if ($existing.previous.required_runtime -ne $runtime.state.current.release_id) {
+            throw 'The previous app requires another runtime; use the full updater.'
+        }
+        $site = Test-AppLayer $existing.previous
+        Test-AppHealth $runtime.python $site
+        $next = [ordered]@{ schema_version = 1; current = $existing.previous; previous = $existing.current }
+        Commit-AppState ($next | ConvertTo-Json -Depth 5)
+    } else {
+        Commit-AppState '' -Remove
+    }
+    Write-Host 'Previous AutoClip app selected.'
+    return
+}
+
+$downloadedManifest = $null
+if (-not $ManifestPath) {
+    if ($expectedManifestSha256 -notmatch '^[0-9a-fA-F]{64}$') {
+        throw 'The app release manifest is not pinned yet.'
+    }
+    $downloadedManifest = Join-Path ([IO.Path]::GetTempPath()) ('autoclip-app-manifest-' + [guid]::NewGuid().ToString('N') + '.json')
+    try {
+        Invoke-WebRequest -UseBasicParsing -Uri $manifestUrl -OutFile $downloadedManifest
+        $ManifestPath = $downloadedManifest
+    } catch {
+        if (Test-Path -LiteralPath $downloadedManifest) { Remove-Item -LiteralPath $downloadedManifest }
+        throw
+    }
+}
+try {
+    if ($downloadedManifest -and
+        (Get-FileHash -LiteralPath $ManifestPath -Algorithm SHA256).Hash -ne $expectedManifestSha256) {
+        throw 'The downloaded app manifest SHA-256 does not match the pinned release.'
+    }
+$manifest = Read-AppManifest $ManifestPath
+if ($manifest.required_runtime -ne $runtime.state.current.release_id -or
+    $manifest.runtime_manifest_sha256 -ne $runtime.state.current.manifest_sha256) {
+    throw 'The app requires a different runtime. Use the full updater.'
+}
+$app = [ordered]@{
+    app_id = [string]$manifest.app_id
+    required_runtime = [string]$manifest.required_runtime
+    wheel_sha256 = [string]$manifest.wheel_sha256
+}
+if ($existing -and $existing.current.app_id -eq $app.app_id) {
+    $site = Test-AppLayer $existing.current
+    Test-AppHealth $runtime.python $site
+    Write-StableLauncher
+    Write-DesktopLauncher
+    $shortcutBackup = Update-DesktopShortcut
+    if ($shortcutBackup) { Remove-Item -LiteralPath $shortcutBackup }
+    Write-Host "AutoClip app is already up to date: $($app.app_id)"
+    return
+}
+if (-not $WheelPath -or -not (Test-Path -LiteralPath $WheelPath -PathType Leaf)) {
+    if ($WheelPath) { throw 'The pinned app wheel is missing.' }
+    $wheelUrl = [string]$manifest.wheel_url
+    if ($wheelUrl -notmatch '^https://github\.com/Farkoal2128/autoclip-runtime/releases/download/[^/]+/autoclip-[^/]+\.whl$') {
+        throw 'The pinned app wheel URL is missing or invalid.'
+    }
+    $WheelPath = Join-Path ([IO.Path]::GetTempPath()) ('autoclip-app-wheel-' + [guid]::NewGuid().ToString('N') + '.whl')
+    try {
+        Invoke-WebRequest -UseBasicParsing -Uri $wheelUrl -OutFile $WheelPath
+    } catch {
+        if (Test-Path -LiteralPath $WheelPath) { Remove-Item -LiteralPath $WheelPath }
+        throw
+    }
+    $downloadedWheel = $WheelPath
+}
+try {
+if ((Get-Item -LiteralPath $WheelPath).Length -ne [long]$manifest.wheel_size -or
+    (Get-FileHash -LiteralPath $WheelPath -Algorithm SHA256).Hash -ne $manifest.wheel_sha256) {
+    throw 'The app wheel size or SHA-256 does not match its manifest.'
+}
+$appsRoot = Join-Path $baseFull 'apps'
+New-Item -ItemType Directory -Path $appsRoot -Force | Out-Null
+$target = Join-Path $appsRoot $app.app_id
+if (Test-Path -LiteralPath $target) { throw "App layer already exists: $target" }
+$staging = Join-Path $appsRoot ('.staging-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $staging | Out-Null
+try {
+    $site = Join-Path $staging 'site'
+    New-Item -ItemType Directory -Path $site | Out-Null
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [IO.Compression.ZipFile]::OpenRead($WheelPath)
+    try {
+        foreach ($entry in $zip.Entries) {
+            $name = $entry.FullName.Replace('\', '/')
+            if ($name.StartsWith('/') -or $name -match '(^|/)\.\.(/|$)' -or $name -match '^[A-Za-z]:') {
+                throw 'The app wheel contains an unsafe path.'
+            }
+        }
+    } finally { $zip.Dispose() }
+    [IO.Compression.ZipFile]::ExtractToDirectory($WheelPath, $site)
+    Copy-Item -LiteralPath $WheelPath -Destination (Join-Path $staging 'autoclip.whl')
+    Test-AppHealth $runtime.python $site
+    Move-Item -LiteralPath $staging -Destination $target
+} finally {
+    if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
+}
+$previous = if ($existing) { $existing.current } else { $null }
+$next = [ordered]@{ schema_version = 1; current = $app; previous = $previous }
+Commit-AppState ($next | ConvertTo-Json -Depth 5)
+Write-Host "Active AutoClip app: $($app.app_id)"
+Write-Host "Start with: & '$launcherPath'"
+} finally {
+    if ($downloadedWheel -and (Test-Path -LiteralPath $downloadedWheel)) {
+        Remove-Item -LiteralPath $downloadedWheel
+    }
+}
+} finally {
+    if ($downloadedManifest -and (Test-Path -LiteralPath $downloadedManifest)) {
+        Remove-Item -LiteralPath $downloadedManifest
+    }
+}

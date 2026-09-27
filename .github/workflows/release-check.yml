@@ -19,7 +19,7 @@ jobs:
       - name: Parse installer and launch scripts
         shell: pwsh
         run: |
-          foreach ($name in @('install.ps1', 'update.ps1', 'Start-AutoClip.ps1', '.github/tests/Update.Tests.ps1', '.github/tests/InstallRetry.Tests.ps1', '.github/tests/GpuRuntime.Tests.ps1', '.github/tests/ReleasePin.Tests.ps1', '.github/tests/ReleaseDownload.Tests.ps1', '.github/scripts/verify-public-release.ps1')) {
+          foreach ($name in @('install.ps1', 'update.ps1', 'update-app.ps1', 'Start-AutoClip.ps1', '.github/tests/Update.Tests.ps1', '.github/tests/AppUpdate.Tests.ps1', '.github/tests/InstallRetry.Tests.ps1', '.github/tests/GpuRuntime.Tests.ps1', '.github/tests/ReleasePin.Tests.ps1', '.github/tests/ReleaseDownload.Tests.ps1', '.github/scripts/verify-public-release.ps1', '.github/scripts/verify-public-app-release.ps1')) {
             $tokens = $null
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $name), [ref]$tokens, [ref]$errors) | Out-Null
@@ -70,6 +70,35 @@ jobs:
         if: steps.pin.outputs.changed == 'true'
         shell: pwsh
         run: ./.github/scripts/verify-public-release.ps1
+
+  public-app-pin:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect app pin change
+        id: pin
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          $base = if ($env:EVENT_NAME -eq 'pull_request') { $env:PR_BASE } else { $env:PUSH_BEFORE }
+          if (-not $base -or $base -match '^0+$') {
+            $changed = $true
+          } else {
+            $files = @(git diff --name-only $base HEAD -- app-release.json update-app.ps1)
+            if ($LASTEXITCODE -ne 0) { throw 'Could not compare the app pin with the base commit.' }
+            $changed = $files.Count -gt 0
+          }
+          "changed=$($changed.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+      - name: Verify exact public app asset
+        if: steps.pin.outputs.changed == 'true'
+        shell: pwsh
+        run: ./.github/scripts/verify-public-app-release.ps1
 
   windows-release-smoke:
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
@@ -122,6 +151,26 @@ jobs:
       - name: Update, rollback and failure recovery
         shell: pwsh
         run: ./.github/tests/Update.Tests.ps1 -BaseRoot (Join-Path $env:RUNNER_TEMP 'AutoClip')
+      - name: App-only published update and rollback
+        shell: pwsh
+        run: |
+          $base = Join-Path $env:RUNNER_TEMP 'AutoClip'
+          & ./update-app.ps1 -BaseRoot $base -NoShortcut
+          $state = Get-Content -LiteralPath (Join-Path $base 'app-active.json') -Raw | ConvertFrom-Json
+          if ($state.current.app_id -ne 'app-20260926-cr11') { throw 'The published app was not selected.' }
+          & ./update-app.ps1 -BaseRoot $base -Rollback -NoShortcut
+          if (Test-Path -LiteralPath (Join-Path $base 'app-active.json')) { throw 'Legacy app rollback failed.' }
+      - name: App-only failure and shortcut fixtures
+        shell: pwsh
+        run: |
+          $wheel = Join-Path $env:RUNNER_TEMP 'autoclip-app-fixture.whl'
+          try {
+            $manifest = Get-Content -LiteralPath app-release.json -Raw | ConvertFrom-Json
+            Invoke-WebRequest -UseBasicParsing -Uri $manifest.wheel_url -OutFile $wheel
+            & ./.github/tests/AppUpdate.Tests.ps1 -RuntimeRoot (Join-Path $env:RUNNER_TEMP 'AutoClip\v11-20260926-app-refresh') -WheelPath $wheel
+          } finally {
+            if (Test-Path -LiteralPath $wheel) { Remove-Item -LiteralPath $wheel }
+          }
       - name: Start packaged app and check health/home
         shell: pwsh
         run: |

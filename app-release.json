@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "app_id": "app-20260926-cr11",
+  "required_runtime": "v11-20260926-app-refresh",
+  "runtime_manifest_sha256": "204e45e99779779b4de6620f6e17219ada695c1845d747032d0ad5f6dd5984ba",
+  "wheel_url": "https://github.com/Farkoal2128/autoclip-runtime/releases/download/v0.1.0-dev0-windows-app-20260926-cr11/autoclip-0.1.0.dev0-py3-none-any.whl",
+  "wheel_sha256": "1eea5b9ebe896b0e6d59b32903d9d8f89cc9e199d031ab8bf02f36ee15f0b3e0",
+  "wheel_size": 1718186
+}

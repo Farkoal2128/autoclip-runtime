@@ -87,7 +87,26 @@ $releaseId = [string]$state.current.release_id
 if ($releaseId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
     throw 'The active AutoClip release identifier is invalid.'
 }
-$launcher = Join-Path (Join-Path $PSScriptRoot $releaseId) 'Start-AutoClip.ps1'
+$runtimeRoot = Join-Path $PSScriptRoot $releaseId
+$appStatePath = Join-Path $PSScriptRoot 'app-active.json'
+if (Test-Path -LiteralPath $appStatePath -PathType Leaf) {
+    $appState = Get-Content -LiteralPath $appStatePath -Raw | ConvertFrom-Json
+    $appId = [string]$appState.current.app_id
+    if ($appState.schema_version -ne 1 -or $appId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
+        throw 'The active AutoClip app state is invalid.'
+    }
+    if ($appState.current.required_runtime -eq $releaseId) {
+        $site = Join-Path (Join-Path (Join-Path $PSScriptRoot 'apps') $appId) 'site'
+        if (-not (Test-Path -LiteralPath (Join-Path $site 'autoclip\app.py') -PathType Leaf)) {
+            throw 'The active AutoClip app layer is missing.'
+        }
+        $env:PYTHONPATH = $site
+        $env:AUTOCLIP_MANAGED_DESKTOP_LAUNCHER = Join-Path $PSScriptRoot 'Start-AutoClip-Desktop.ps1'
+        & (Join-Path $runtimeRoot '.venv\Scripts\python.exe') -m autoclip.cli serve
+        return
+    }
+}
+$launcher = Join-Path $runtimeRoot 'Start-AutoClip.ps1'
 if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) {
     throw "The active AutoClip runtime is missing: $launcher"
 }
@@ -210,6 +229,11 @@ function Update-DesktopShortcut($Release) {
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($shortcutPath)
     $target = [IO.Path]::GetFullPath([string]$shortcut.TargetPath)
+    $managedDesktopLauncher = Join-Path $baseFull 'Start-AutoClip-Desktop.ps1'
+    if (([string]$shortcut.Arguments).Contains($managedDesktopLauncher) -and
+        (Test-Path -LiteralPath $managedDesktopLauncher -PathType Leaf)) {
+        return $null
+    }
     $managedPrefix = $baseFull + '\'
     if (-not $target.StartsWith($managedPrefix, [StringComparison]::OrdinalIgnoreCase)) {
         Write-Warning "The existing AutoClip desktop shortcut points outside $baseFull. It was not changed; recreate it from the new app's Settings."

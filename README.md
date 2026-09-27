@@ -129,6 +129,32 @@ not a final legal clearance of the new asset.
 
 ## Updating
 
+For application and UI changes on the current verified V11 runtime, close
+AutoClip and run the smaller app-only updater:
+
+```powershell
+irm https://raw.githubusercontent.com/Farkoal2128/autoclip-runtime/main/update-app.ps1 | iex
+```
+
+It verifies the pinned app manifest and AutoClip wheel, reuses the installed
+dependency environment without downloading the full runtime archive, checks
+health/home in a disposable project home, then selects the new app. The
+previous app remains available. To switch back without downloading runtime
+dependencies, run:
+
+```powershell
+& ([ScriptBlock]::Create((irm https://raw.githubusercontent.com/Farkoal2128/autoclip-runtime/main/update-app.ps1))) -Rollback
+```
+
+This app-only command requires the compatible V11 runtime already installed
+and selected by the full updater below. If the runtime is missing or its
+dependency identity changes, use the full updater. The app-only release is
+about 1.7 MB; it does not include the Python/CUDA dependency wheels. A
+rollback changes the selected application code, not any project-data schema
+migration performed after launch.
+
+For a new dependency runtime or a first managed update, use the full updater:
+
 Close AutoClip, then paste this line into PowerShell:
 
 ```powershell
