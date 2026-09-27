@@ -1,8 +1,9 @@
 # Runtime and application update architecture
 
-Status: target contract for future updater work. The current V11 scripts still
-install a complete 79-wheel environment into each versioned release directory.
-This document does not claim the split updater is implemented or released.
+Status: architecture contract. The current V11 full installer still installs
+a complete 79-wheel environment into each versioned release directory. The
+CR-11 app-only updater is published for application updates on the compatible
+V11 runtime; the fully separated runtime layout below remains a target design.
 
 ## Layers and identity
 

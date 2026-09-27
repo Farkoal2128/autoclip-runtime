@@ -248,10 +248,11 @@ source-resolution ZIP files and their download URLs remain available. Earlier
 V11 installations remain separate. The archive SHA-256 pinned in `install.ps1`
 is `5308c1fa34e967b38c4386970f123a3e67a2ea5532c1e144db577b95c56afdf0`.
 
-This app refresh uses the current complete-environment updater: an update
-downloads about 1.34 GB even though the 78 dependency wheels are unchanged.
-The documented split app/runtime updater is a future design, not part of this
-release.
+The full updater downloads about 1.34 GB when installing this runtime. For
+application-only changes on an already installed compatible V11 runtime, the
+published CR-11 app-only updater downloads the approximately 1.7 MB AutoClip
+wheel instead; see [Updating](#updating). A first install or dependency change
+still needs the full runtime archive.
 
 The project owner directed public redistribution of this exact candidate.
 The technical audit confirmed file identity and sampled Windows behavior; it
