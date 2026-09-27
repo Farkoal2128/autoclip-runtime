@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory)][string]$Wheelhouse,
     [Parameter(Mandatory)][string]$OpenBlasArchive,
     [Parameter(Mandatory)][string]$MsysBash,
-    [Parameter(Mandatory)][string]$CudaRoot,
+    [string]$CudaRoot,
+    [switch]$InstallNvidiaGpu,
     [Parameter(Mandatory)][string]$Python,
     [Parameter(Mandatory)][string]$Uv
 )
@@ -50,7 +51,7 @@ function Get-PinnedGitSource([string]$Name, [string]$Url, [string]$Commit) {
     return $folder
 }
 
-foreach ($path in @($MsysBash, $CudaRoot, $Python, $OpenBlasArchive)) {
+foreach ($path in @($MsysBash, $Python, $OpenBlasArchive)) {
     if (-not (Test-Path -LiteralPath $path)) { throw "Native build prerequisite missing: $path" }
 }
 if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
@@ -74,9 +75,11 @@ if (-not (Get-Command nasm.exe -ErrorAction SilentlyContinue)) {
     $env:Path = (Join-Path $msysRoot 'ucrt64\bin') + ';' + $env:Path
 }
 if (-not (Get-Command nasm.exe -ErrorAction SilentlyContinue)) { throw 'NASM is required for codec-free FFmpeg.' }
-if (-not (Test-Path -LiteralPath (Join-Path $CudaRoot 'bin\nvcc.exe'))) { throw 'CUDA toolkit with nvcc.exe is required.' }
-$cudaVersion = & (Join-Path $CudaRoot 'bin\nvcc.exe') --version | Out-String
-if ($LASTEXITCODE -ne 0 -or $cudaVersion -notmatch 'release 12\.8,') { throw 'CUDA toolkit 12.8 is required.' }
+if ($InstallNvidiaGpu) {
+    if (-not $CudaRoot -or -not (Test-Path -LiteralPath (Join-Path $CudaRoot 'bin\nvcc.exe'))) { throw 'NVIDIA GPU build requires CUDA toolkit with nvcc.exe.' }
+    $cudaVersion = & (Join-Path $CudaRoot 'bin\nvcc.exe') --version | Out-String
+    if ($LASTEXITCODE -ne 0 -or $cudaVersion -notmatch 'release 12\.8,') { throw 'NVIDIA GPU build requires CUDA toolkit 12.8.' }
+}
 $openblasHash = (Get-FileHash -LiteralPath $OpenBlasArchive -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($openblasHash -ne '8b04387766efc05c627e26d24797ec0d4ed4c105ec14fa7400aa84a02db22b66') {
     throw 'Pinned OpenBLAS archive hash mismatch.'
@@ -127,7 +130,9 @@ if (Test-Path -LiteralPath $receiptPath -PathType Leaf) {
         $cachedReceipt.pyav_source_sha256 -ne '47bfc286e1bc9de7ab4681fc2b575cd2460a66919d31ffe1bd5aa54fae531a28' -or
         $cachedReceipt.onednn_commit -ne '64f6bcbcbab628e96f33a62c3e975f8535a7bde4' -or
         $cachedReceipt.ctranslate2_commit -ne 'd44d2d069eb88c7b7804da864c10c201501cb4a9' -or
-        @($cachedReceipt.wheels).Count -ne 2) {
+        @($cachedReceipt.wheels).Count -ne 2 -or
+        -not $cachedReceipt.PSObject.Properties['install_nvidia_gpu'] -or
+        [bool]$cachedReceipt.install_nvidia_gpu -ne [bool]$InstallNvidiaGpu) {
         throw 'Cached native build receipt does not match the pinned source recipe.'
     }
     foreach ($wheel in $cachedReceipt.wheels) {
@@ -178,7 +183,12 @@ Invoke-Checked $cmake @('--install', $oneDnnBuild, '--config', 'Release')
 
 $ct2Build = Join-Path $BuildRoot 'ctranslate2-build'
 $ct2Install = Join-Path $BuildRoot 'ctranslate2-install'
-Invoke-Checked $cmake @('-S', $ct2Source, '-B', $ct2Build, '-G', 'Visual Studio 17 2022', '-A', 'x64', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5', '-DWITH_CUDA=ON', '-DWITH_OPENBLAS=ON', '-DOPENMP_RUNTIME=COMP', '-DWITH_MKL=OFF', '-DWITH_DNNL=ON', '-DWITH_RUY=OFF', '-DWITH_CUDNN=OFF', '-DWITH_FLASH_ATTN=OFF', '-DCUDA_ARCH_LIST=Common', '-DCUDA_DYNAMIC_LOADING=ON', '-DCUDA_NVCC_FLAGS=-Xfatbin=-compress-all;-gencode;arch=compute_120,code=sm_120', "-DCUDA_TOOLKIT_ROOT_DIR=$(Convert-ToCmakePath $CudaRoot)", "-DOPENBLAS_INCLUDE_DIR=$(Convert-ToCmakePath (Join-Path $openblasRoot 'include'))", "-DOPENBLAS_LIBRARY=$(Convert-ToCmakePath (Join-Path $openblasRoot 'lib\libopenblas.lib'))", "-DDNNL_INCLUDE_DIR=$(Convert-ToCmakePath (Join-Path $oneDnnInstall 'include'))", "-DDNNL_LIBRARY=$(Convert-ToCmakePath (Join-Path $oneDnnInstall 'lib\dnnl.lib'))", "-DCMAKE_INSTALL_PREFIX=$(Convert-ToCmakePath $ct2Install)")
+$ct2Args = @('-S', $ct2Source, '-B', $ct2Build, '-G', 'Visual Studio 17 2022', '-A', 'x64', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5', '-DWITH_CUDA=OFF', '-DWITH_OPENBLAS=ON', '-DOPENMP_RUNTIME=COMP', '-DWITH_MKL=OFF', '-DWITH_DNNL=ON', '-DWITH_RUY=OFF', '-DWITH_CUDNN=OFF', '-DWITH_FLASH_ATTN=OFF', "-DOPENBLAS_INCLUDE_DIR=$(Convert-ToCmakePath (Join-Path $openblasRoot 'include'))", "-DOPENBLAS_LIBRARY=$(Convert-ToCmakePath (Join-Path $openblasRoot 'lib\libopenblas.lib'))", "-DDNNL_INCLUDE_DIR=$(Convert-ToCmakePath (Join-Path $oneDnnInstall 'include'))", "-DDNNL_LIBRARY=$(Convert-ToCmakePath (Join-Path $oneDnnInstall 'lib\dnnl.lib'))", "-DCMAKE_INSTALL_PREFIX=$(Convert-ToCmakePath $ct2Install)")
+if ($InstallNvidiaGpu) {
+    $ct2Args = @($ct2Args | Where-Object { $_ -ne '-DWITH_CUDA=OFF' })
+    $ct2Args += @('-DWITH_CUDA=ON', '-DCUDA_ARCH_LIST=Common', '-DCUDA_DYNAMIC_LOADING=ON', '-DCUDA_NVCC_FLAGS=-Xfatbin=-compress-all;-gencode;arch=compute_120,code=sm_120', "-DCUDA_TOOLKIT_ROOT_DIR=$(Convert-ToCmakePath $CudaRoot)")
+}
+Invoke-Checked $cmake $ct2Args
 Invoke-Checked $cmake @('--build', $ct2Build, '--config', 'Release', '--parallel', '8')
 Invoke-Checked $cmake @('--install', $ct2Build, '--config', 'Release')
 $ct2Python = Join-Path $ct2Source 'python'
@@ -199,6 +209,7 @@ $receipt = [ordered]@{
     pyav_source_sha256 = '47bfc286e1bc9de7ab4681fc2b575cd2460a66919d31ffe1bd5aa54fae531a28'
     onednn_commit = '64f6bcbcbab628e96f33a62c3e975f8535a7bde4'
     ctranslate2_commit = 'd44d2d069eb88c7b7804da864c10c201501cb4a9'
+    install_nvidia_gpu = [bool]$InstallNvidiaGpu
     ffmpeg_config_sha256 = (Get-FileHash -LiteralPath (Join-Path $BuildRoot 'ffmpeg-config.mak') -Algorithm SHA256).Hash.ToLowerInvariant()
     wheels = @($wheels | ForEach-Object { [ordered]@{ filename = $_.Name; bytes = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() } })
 }

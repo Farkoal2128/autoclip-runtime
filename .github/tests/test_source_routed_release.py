@@ -212,6 +212,8 @@ class SourceRoutedReleaseTest(unittest.TestCase):
             native_manifest = json.loads((source_target / "release-manifest.json").read_text())
             self.assertEqual(native_manifest["native_build"]["wheel_names"], sorted(module.native_source_wheel_names()))
             self.assertTrue(native_manifest["native_build"]["cuda_dynamic_loading"])
+            self.assertTrue(native_manifest["native_build"]["cuda_optional"])
+            self.assertFalse(native_manifest["native_build"]["cuda_default_enabled"])
             self.assertEqual(native_manifest["native_build"]["ctranslate2_commit"], "d44d2d069eb88c7b7804da864c10c201501cb4a9")
 
 

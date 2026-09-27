@@ -57,6 +57,12 @@ review.
 The local candidate installer is `install-source-build.ps1`; it takes an exact
 `-ArchivePath`, and can take `-MsysBash`, `-CudaRoot`, `-ExternalCache` and
 `-NativeBuildRoot` for a prepared Windows toolchain and resumable builds.
+For the next candidate, the default source build is CPU capable without CUDA
+or NVIDIA runtime wheels. Pass `-InstallNvidiaGpu` to the installer or updater
+to request the CUDA 12.8 build and NVIDIA runtime wheels; `-CudaRoot` selects
+the toolkit if `CUDA_PATH` is unavailable. CPU and NVIDIA native build caches
+and receipts use separate profiles. AMD cards use the CPU path pending a
+separately designed and verified AMD acceleration backend.
 `update.ps1` forwards those options and leaves the old active runtime in
 place until the new install and isolated health/home check succeed. The
 public `install.ps1` remains pinned to the existing reviewed artifact.

@@ -540,6 +540,8 @@ def build_release(source: Path, target: Path, *, build_native_from_source: bool 
             "ctranslate2": "4.8.2",
             "ctranslate2_commit": "d44d2d069eb88c7b7804da864c10c201501cb4a9",
             "cuda_toolkit": "12.8",
+            "cuda_optional": True,
+            "cuda_default_enabled": False,
             "cuda_dynamic_loading": True,
             "cuda_architectures": "Common plus sm_120",
             "wheel_names": sorted(native_source_wheel_names()),

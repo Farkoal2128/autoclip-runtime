@@ -5,6 +5,7 @@ param(
     [string]$NativeBuildRoot,
     [string]$MsysBash,
     [string]$CudaRoot,
+    [switch]$InstallNvidiaGpu,
     [switch]$OfflinePublisherCache,
     [switch]$InstallOllama,
     [switch]$PrerequisitesOnly,
@@ -96,10 +97,12 @@ if ($InstallOllama) {
     Write-Host 'Ollama installed. Pull a model of your choice with: ollama pull <model>'
 }
 if (-not $MsysBash) { $MsysBash = 'C:\msys64\usr\bin\bash.exe' }
-if (-not $CudaRoot) { $CudaRoot = $env:CUDA_PATH }
 if (-not (Test-Path -LiteralPath $MsysBash -PathType Leaf)) { throw 'MSYS2 bash is required for recipient-side FFmpeg compilation. Pass -MsysBash.' }
-if (-not $CudaRoot -or -not (Test-Path -LiteralPath (Join-Path $CudaRoot 'bin\nvcc.exe') -PathType Leaf)) {
-    throw 'CUDA 12.8 toolkit is required for recipient-side CTranslate2 compilation. Pass -CudaRoot.'
+if ($InstallNvidiaGpu) {
+    if (-not $CudaRoot) { $CudaRoot = $env:CUDA_PATH }
+    if (-not $CudaRoot -or -not (Test-Path -LiteralPath (Join-Path $CudaRoot 'bin\nvcc.exe') -PathType Leaf)) {
+        throw 'NVIDIA GPU install requires CUDA 12.8 toolkit for recipient-side CTranslate2 compilation. Pass -CudaRoot.'
+    }
 }
 if (-not (Get-Command git.exe -ErrorAction SilentlyContinue)) { throw 'Git is required to fetch the pinned oneDNN and CTranslate2 source commits.' }
 if ($PrerequisitesOnly) { Write-Host 'Prerequisites are ready.'; return }
@@ -175,13 +178,15 @@ try {
     }
 
     . (Join-Path $InstallRoot 'upstream-assets.ps1')
-    $externalWheels = Join-Path $InstallRoot 'publisher-wheels'
+    $wheelProfile = if ($InstallNvidiaGpu) { 'nvidia' } else { 'cpu' }
+    $externalWheels = Join-Path $InstallRoot "publisher-wheels\$wheelProfile"
     & (Join-Path $InstallRoot 'Prepare-AutoClipOfflineCache.ps1') -ManifestPath $manifestPath -CacheRoot $publisherCache -StageWheelhouse $externalWheels -Offline:$OfflinePublisherCache
     if (-not $?) { throw 'Publisher wheel acquisition failed.' }
     $microsoft = $null
     $openblasArchive = $null
     $openblasAsset = $null
     foreach ($asset in $manifest.external_assets) {
+        if ($asset.kind -eq 'python_wheel' -and -not $InstallNvidiaGpu) { continue }
         if ([string]$asset.filename -notmatch '^[A-Za-z0-9][A-Za-z0-9._+-]*$') {
             throw "Invalid publisher asset filename: $($asset.filename)"
         }
@@ -241,14 +246,19 @@ try {
     }
     $python = Join-Path $venv 'Scripts\python.exe'
     $wheelhouse = Join-Path $InstallRoot 'wheelhouse'
-    if (-not $NativeBuildRoot) { $NativeBuildRoot = Join-Path $ExternalCache 'native-build-v11-20260926' }
-    & (Join-Path $InstallRoot 'build-native-from-source.ps1') -BuildRoot $NativeBuildRoot -Wheelhouse $externalWheels -OpenBlasArchive $openblasArchive -MsysBash $MsysBash -CudaRoot $CudaRoot -Python $python -Uv $uv.Source
+    if (-not $NativeBuildRoot) {
+        $buildProfile = if ($InstallNvidiaGpu) { 'nvidia' } else { 'cpu' }
+        $NativeBuildRoot = Join-Path $ExternalCache "native-build-v11-20260926-$buildProfile"
+    }
+    & (Join-Path $InstallRoot 'build-native-from-source.ps1') -BuildRoot $NativeBuildRoot -Wheelhouse $externalWheels -OpenBlasArchive $openblasArchive -MsysBash $MsysBash -CudaRoot $CudaRoot -InstallNvidiaGpu:$InstallNvidiaGpu -Python $python -Uv $uv.Source
     if (-not $?) { throw 'Pinned PyAV/CTranslate2 source build failed.' }
     Copy-Item -LiteralPath (Join-Path $NativeBuildRoot 'native-build-receipt.json') -Destination (Join-Path $InstallRoot 'native-build-receipt.json') -Force
-    $expectedWheelCount = @($manifest.publisher_wheels).Count + @($manifest.native_build.wheel_names).Count + @($manifest.external_assets | Where-Object { $_.kind -eq 'python_wheel' }).Count + @(Get-ChildItem -LiteralPath $wheelhouse -Filter '*.whl' -File).Count
+    $nvidiaWheelCount = if ($InstallNvidiaGpu) { @($manifest.external_assets | Where-Object { $_.kind -eq 'python_wheel' }).Count } else { 0 }
+    $expectedWheelCount = @($manifest.publisher_wheels).Count + @($manifest.native_build.wheel_names).Count + $nvidiaWheelCount + @(Get-ChildItem -LiteralPath $wheelhouse -Filter '*.whl' -File).Count
     & $python (Join-Path $InstallRoot 'verify-install-wheels.py') $wheelhouse $externalWheels --count $expectedWheelCount
     if ($LASTEXITCODE -ne 0) { throw 'Wheel ZIP or RECORD integrity check failed.' }
-    & $uv.Source pip install --python $python --no-cache --offline --no-index --find-links $wheelhouse --find-links $externalWheels 'autoclip[gpu]==0.1.0.dev0'
+    $autoclipPackage = if ($InstallNvidiaGpu) { 'autoclip[gpu]==0.1.0.dev0' } else { 'autoclip==0.1.0.dev0' }
+    & $uv.Source pip install --python $python --no-cache --offline --no-index --find-links $wheelhouse --find-links $externalWheels $autoclipPackage
     if ($LASTEXITCODE -ne 0) { throw 'Offline AutoClip installation failed.' }
     if (-not $openblasArchive -or -not $openblasAsset) { throw 'Pinned OpenBLAS publisher archive is missing.' }
     $openblasDestination = Join-Path $venv 'Lib\site-packages\ctranslate2\libopenblas.dll'
@@ -257,8 +267,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Installed dependency check failed.' }
     & $python -c "import av, ctranslate2; assert 'int8' in ctranslate2.get_supported_compute_types('cpu')"
     if ($LASTEXITCODE -ne 0) { throw 'Locally built PyAV/CTranslate2 CPU import and capability check failed.' }
-    $nvidiaSmi = Get-Command nvidia-smi.exe -ErrorAction SilentlyContinue
-    if ($nvidiaSmi) {
+    if ($InstallNvidiaGpu) {
+        $nvidiaSmi = Get-Command nvidia-smi.exe -ErrorAction SilentlyContinue
+    }
+    if ($InstallNvidiaGpu -and $nvidiaSmi) {
         & $nvidiaSmi.Source -L | Out-Null
         if ($LASTEXITCODE -eq 0) {
             & $python -c "from autoclip.cuda import ensure_cuda_libraries; ensure_cuda_libraries(); import ctranslate2; assert 'float16' in ctranslate2.get_supported_compute_types('cuda')"

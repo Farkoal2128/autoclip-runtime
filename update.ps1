@@ -6,6 +6,7 @@ param(
     [string]$NativeBuildRoot,
     [string]$MsysBash,
     [string]$CudaRoot,
+    [switch]$InstallNvidiaGpu,
     [string]$ShortcutPath,
     [string]$PreviousReleaseId,
     [switch]$Rollback,
@@ -389,6 +390,7 @@ try {
         if ($NativeBuildRoot) { $arguments.NativeBuildRoot = $NativeBuildRoot }
         if ($MsysBash) { $arguments.MsysBash = $MsysBash }
         if ($CudaRoot) { $arguments.CudaRoot = $CudaRoot }
+        if ($InstallNvidiaGpu) { $arguments.InstallNvidiaGpu = $true }
         & $InstallerPath @arguments
     }
     $previous = if ($state -and $state.current.release_id -eq $releaseId) {
