@@ -11,6 +11,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'upstream-assets.ps1')
+$requiredMsysPackages = @('make', 'diffutils', 'pkgconf', 'mingw-w64-ucrt-x86_64-nasm')
 
 function Invoke-Checked([string]$Program, [string[]]$Arguments) {
     & $Program @Arguments
@@ -132,7 +133,8 @@ if (Test-Path -LiteralPath $receiptPath -PathType Leaf) {
         $cachedReceipt.ctranslate2_commit -ne 'd44d2d069eb88c7b7804da864c10c201501cb4a9' -or
         @($cachedReceipt.wheels).Count -ne 2 -or
         -not $cachedReceipt.PSObject.Properties['install_nvidia_gpu'] -or
-        [bool]$cachedReceipt.install_nvidia_gpu -ne [bool]$InstallNvidiaGpu) {
+        [bool]$cachedReceipt.install_nvidia_gpu -ne [bool]$InstallNvidiaGpu -or
+        [string]$cachedReceipt.profile -ne $(if ($InstallNvidiaGpu) { 'nvidia' } else { 'cpu' })) {
         throw 'Cached native build receipt does not match the pinned source recipe.'
     }
     foreach ($wheel in $cachedReceipt.wheels) {
@@ -204,12 +206,21 @@ $wheels = @(Get-ChildItem -LiteralPath $Wheelhouse -Filter '*.whl' | Where-Objec
 if ($wheels.Count -ne 2) { throw 'Native source build did not produce both controlled wheels.' }
 Invoke-Checked $buildPython @($verifier, $Wheelhouse, (Join-Path $BuildRoot 'ffmpeg-config.mak'))
 $receipt = [ordered]@{
+    profile = if ($InstallNvidiaGpu) { 'nvidia' } else { 'cpu' }
     built_at_utc = [DateTime]::UtcNow.ToString('o')
     ffmpeg_source_sha256 = '464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c'
     pyav_source_sha256 = '47bfc286e1bc9de7ab4681fc2b575cd2460a66919d31ffe1bd5aa54fae531a28'
     onednn_commit = '64f6bcbcbab628e96f33a62c3e975f8535a7bde4'
     ctranslate2_commit = 'd44d2d069eb88c7b7804da864c10c201501cb4a9'
     install_nvidia_gpu = [bool]$InstallNvidiaGpu
+    cmake_arguments = @($ct2Args)
+    build_prerequisites = [ordered]@{
+        git = ((& git --version) | Out-String).Trim()
+        cmake = ((& $cmake --version | Select-Object -First 1) | Out-String).Trim()
+        nasm = ((& nasm -v) | Out-String).Trim()
+        msvc = ((& cl.exe /Bv 2>&1 | Select-Object -First 1) | Out-String).Trim()
+        msys2_packages = @($requiredMsysPackages | ForEach-Object { & $MsysBash -lc "pacman -Q $_" })
+    }
     ffmpeg_config_sha256 = (Get-FileHash -LiteralPath (Join-Path $BuildRoot 'ffmpeg-config.mak') -Algorithm SHA256).Hash.ToLowerInvariant()
     wheels = @($wheels | ForEach-Object { [ordered]@{ filename = $_.Name; bytes = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() } })
 }

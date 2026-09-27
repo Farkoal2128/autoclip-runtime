@@ -66,3 +66,30 @@ separately designed and verified AMD acceleration backend.
 `update.ps1` forwards those options and leaves the old active runtime in
 place until the new install and isolated health/home check succeed. The
 public `install.ps1` remains pinned to the existing reviewed artifact.
+
+## Clean Windows CPU bootstrap candidate
+
+The next source-build installer provisions missing CPU build tools in its own
+process. Winget selects exact x64 package identities: `astral-sh.uv` 0.12.19,
+`Gyan.FFmpeg` 9.0.1, `Git.Git` 2.55.0.3, `MSYS2.MSYS2` 20260611, and
+`Microsoft.VisualStudio.2022.BuildTools` 17.14.41 with
+`Microsoft.VisualStudio.Workload.VCTools` and
+`Microsoft.VisualStudio.Component.Windows10SDK.20348`. Python comes from uv's
+3.11 selection, with `Python.Python.3.11` 3.11.9 as the winget fallback.
+MSYS2 installs `make`, `diffutils`, `pkgconf`, and
+`mingw-w64-ucrt-x86_64-nasm` through pacman, then validates those commands.
+The native builder acquires exact `cmake` 4.4.3 and other build Python wheels
+by URL, size, and SHA-256. Its Visual Studio generator does not use Ninja.
+OpenBLAS remains a separately pinned publisher archive; the Microsoft VC++
+runtime remains a separately pinned external installer. Windows supplies
+`tar.exe` and `cmd.exe`. CUDA and NVIDIA runtime wheels are absent in CPU mode.
+
+Package versions are selected explicitly through winget `--version` and
+`--architecture x64`; existing tools must pass the installer capability checks.
+The build receipt records the selected CPU/NVIDIA profile, source revisions,
+CMake arguments, wheel hashes, and observed build tool versions. The exact
+MSYS2 package versions resolved by pacman are retained in that receipt.
+Upstream installation references: [MSYS2 installer CLI](https://www.msys2.org/docs/installer/),
+[MSYS2 package management](https://www.msys2.org/docs/package-management/),
+[Visual Studio command line setup](https://learn.microsoft.com/en-us/visualstudio/install/use-command-line-parameters-to-install-visual-studio?view=vs-2022),
+and [winget version and architecture selection](https://learn.microsoft.com/en-us/windows/package-manager/winget/install).

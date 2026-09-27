@@ -64,24 +64,28 @@ function Update-ProcessPath {
     $env:Path = @($env:Path, $machine, $user, (Join-Path $env:USERPROFILE '.local\bin')) -join ';'
 }
 
-function Require-Tool([string]$Name, [string]$Package) {
+function Install-WingetPackage([string]$Package, [string]$Version, [string]$Override = '') {
+    $winget = Get-Command winget -ErrorAction SilentlyContinue
+    if (-not $winget) { throw "Windows Package Manager is required to provision $Package." }
+    $arguments = @('install', '--exact', '--id', $Package, '--version', $Version, '--architecture', 'x64', '--source', 'winget', '--accept-source-agreements', '--accept-package-agreements')
+    if ($Override) { $arguments += @('--override', $Override) }
+    & $winget.Source @arguments
+    if ($LASTEXITCODE -ne 0) { throw "winget installation failed: $Package $Version (exit $LASTEXITCODE)." }
+    Update-ProcessPath
+}
+
+function Require-Tool([string]$Name, [string]$Package, [string]$Version) {
     $command = Get-Command $Name -ErrorAction SilentlyContinue
     if ($command) { return $command }
-    $winget = Get-Command winget -ErrorAction SilentlyContinue
-    if (-not $winget) {
-        throw "Missing $Name and Windows Package Manager (winget). Install App Installer from Microsoft, then retry."
-    }
-    Write-Host "Installing $Package with winget..."
-    & $winget.Source install --exact --id $Package --source winget --accept-source-agreements --accept-package-agreements
-    if ($LASTEXITCODE -ne 0) { throw "winget installation failed: $Package" }
-    Update-ProcessPath
+    Write-Host "Installing $Package $Version with winget..."
+    Install-WingetPackage $Package $Version
     $command = Get-Command $Name -ErrorAction SilentlyContinue
-    if (-not $command) { throw "$Name was installed but is unavailable in this PowerShell session. Open a new PowerShell window and retry." }
+    if (-not $command) { throw "$Name was installed but is unavailable in this PowerShell session." }
     return $command
 }
 
-$uv = Require-Tool 'uv' 'astral-sh.uv'
-$ffmpeg = Require-Tool 'ffmpeg' 'Gyan.FFmpeg'
+$uv = Require-Tool 'uv' 'astral-sh.uv' '0.12.19'
+$ffmpeg = Require-Tool 'ffmpeg' 'Gyan.FFmpeg' '9.0.1'
 $ffprobe = Get-Command ffprobe -ErrorAction SilentlyContinue
 if (-not $ffprobe) { throw 'FFmpeg was found, but ffprobe is missing. Install the complete Gyan.FFmpeg package.' }
 $filters = & $ffmpeg.Source -hide_banner -filters 2>&1 | Out-String
@@ -93,18 +97,68 @@ if ($LASTEXITCODE -ne 0 -or $encoders -notmatch '\blibx264\b') {
     throw 'FFmpeg needs the libx264 encoder. Install a full FFmpeg build.'
 }
 if ($InstallOllama) {
-    $ollama = Require-Tool 'ollama' 'Ollama.Ollama'
+    $ollama = Require-Tool 'ollama' 'Ollama.Ollama' '0.34.4'
     Write-Host 'Ollama installed. Pull a model of your choice with: ollama pull <model>'
 }
 if (-not $MsysBash) { $MsysBash = 'C:\msys64\usr\bin\bash.exe' }
-if (-not (Test-Path -LiteralPath $MsysBash -PathType Leaf)) { throw 'MSYS2 bash is required for recipient-side FFmpeg compilation. Pass -MsysBash.' }
+if (-not (Test-Path -LiteralPath $MsysBash -PathType Leaf)) {
+    if ($MsysBash -ne 'C:\msys64\usr\bin\bash.exe') { throw "Custom MSYS2 bash path is missing: $MsysBash" }
+    Install-WingetPackage 'MSYS2.MSYS2' '20260611' 'in --confirm-command --accept-messages --root C:/msys64'
+}
+if (-not (Test-Path -LiteralPath $MsysBash -PathType Leaf)) { throw 'MSYS2 installation did not provide bash.exe.' }
+$msysRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $MsysBash))
+$msysUcrt = Join-Path $msysRoot 'ucrt64\bin'
+$env:MSYSTEM = 'UCRT64'
+$env:MSYS2_PATH_TYPE = 'inherit'
+$env:Path = "$msysUcrt;$(Split-Path -Parent $MsysBash);$env:Path"
+$requiredMsysPackages = @('make', 'diffutils', 'pkgconf', 'mingw-w64-ucrt-x86_64-nasm')
+$missingMsysPackages = @($requiredMsysPackages | Where-Object {
+    & $MsysBash -lc "pacman -Q $_ >/dev/null 2>&1"
+    $LASTEXITCODE -ne 0
+})
+if ($missingMsysPackages.Count) {
+    & $MsysBash -lc 'pacman -Syu --noconfirm'
+    if ($LASTEXITCODE -ne 0) { throw 'MSYS2 base package update failed.' }
+    & $MsysBash -lc ('pacman -S --noconfirm --needed ' + ($requiredMsysPackages -join ' '))
+    if ($LASTEXITCODE -ne 0) { throw 'Required MSYS2 build package installation failed.' }
+}
+foreach ($package in $requiredMsysPackages) {
+    & $MsysBash -lc "pacman -Q $package >/dev/null 2>&1"
+    if ($LASTEXITCODE -ne 0) { throw "MSYS2 build package is missing: $package" }
+}
+foreach ($probe in @('make --version', 'diff --version', 'pkg-config --version', 'nasm -v')) {
+    & $MsysBash -lc $probe | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "MSYS2 build tool check failed: $probe" }
+}
+if (-not (Test-Path -LiteralPath (Join-Path $msysUcrt 'nasm.exe'))) { throw 'MSYS2 UCRT64 NASM executable is missing.' }
+$git = Get-Command git.exe -ErrorAction SilentlyContinue
+if (-not $git) {
+    Install-WingetPackage 'Git.Git' '2.55.0.3'
+    $gitPath = Join-Path $env:ProgramFiles 'Git\cmd\git.exe'
+    if (Test-Path -LiteralPath $gitPath) { $env:Path = "$(Split-Path -Parent $gitPath);$env:Path" }
+    $git = Get-Command git.exe -ErrorAction SilentlyContinue
+}
+if (-not $git) { throw 'Git for Windows installation did not provide git.exe.' }
+$gitVersion = & $git.Source --version | Out-String
+if ($LASTEXITCODE -ne 0 -or $gitVersion -notmatch 'git version 2\.(4[5-9]|5[0-9])\.') { throw "Unsupported Git version: $gitVersion" }
+$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+$vsRoot = if (Test-Path -LiteralPath $vswhere) { & $vswhere -latest -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 Microsoft.VisualStudio.Component.Windows10SDK.20348 -property installationPath | Select-Object -First 1 }
+if (-not $vsRoot) {
+    Install-WingetPackage 'Microsoft.VisualStudio.2022.BuildTools' '17.14.41' '--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.Windows10SDK.20348'
+    if (-not (Test-Path -LiteralPath $vswhere)) { throw 'Visual Studio installer did not provide vswhere.exe.' }
+    $vsRoot = & $vswhere -latest -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 Microsoft.VisualStudio.Component.Windows10SDK.20348 -property installationPath | Select-Object -First 1
+}
+if (-not $vsRoot) { throw 'Visual Studio 2022 C++ Build Tools and Windows SDK are unavailable after provisioning.' }
+$vcvars = Join-Path $vsRoot 'VC\Auxiliary\Build\vcvars64.bat'
+if (-not (Test-Path -LiteralPath $vcvars)) { throw 'Visual Studio 2022 vcvars64.bat is missing.' }
+& cmd.exe /c "call `"$vcvars`" >nul && cl.exe /Bv >nul && if exist `"%WindowsSdkDir%Include\%WindowsSDKVersion%um\Windows.h`" (exit /b 0) else (exit /b 1)"
+if ($LASTEXITCODE -ne 0) { throw 'Visual Studio x64 compiler or Windows SDK header validation failed.' }
 if ($InstallNvidiaGpu) {
     if (-not $CudaRoot) { $CudaRoot = $env:CUDA_PATH }
     if (-not $CudaRoot -or -not (Test-Path -LiteralPath (Join-Path $CudaRoot 'bin\nvcc.exe') -PathType Leaf)) {
         throw 'NVIDIA GPU install requires CUDA 12.8 toolkit for recipient-side CTranslate2 compilation. Pass -CudaRoot.'
     }
 }
-if (-not (Get-Command git.exe -ErrorAction SilentlyContinue)) { throw 'Git is required to fetch the pinned oneDNN and CTranslate2 source commits.' }
 if ($PrerequisitesOnly) { Write-Host 'Prerequisites are ready.'; return }
 
 $downloaded = $false
@@ -238,7 +292,7 @@ try {
             throw 'Python 3.11 was unavailable to uv, and winget is missing. Install Python 3.11 from python.org, then retry.'
         }
         Write-Host 'uv could not obtain Python 3.11. Installing the official Python 3.11 package with winget...'
-        & $winget.Source install --exact --id Python.Python.3.11 --source winget --accept-source-agreements --accept-package-agreements
+        & $winget.Source install --exact --id Python.Python.3.11 --version 3.11.9 --architecture x64 --source winget --accept-source-agreements --accept-package-agreements
         if ($LASTEXITCODE -ne 0) { throw 'Python 3.11 installation with winget failed.' }
         Update-ProcessPath
         & $uv.Source venv @venvOptions --python 3.11 --no-managed-python --no-python-downloads $venv
