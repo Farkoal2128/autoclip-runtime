@@ -11,6 +11,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'upstream-assets.ps1')
+. (Join-Path $PSScriptRoot 'native-wheel-cache.ps1')
 $requiredMsysPackages = @('make', 'diffutils', 'pkgconf', 'mingw-w64-ucrt-x86_64-nasm')
 
 function Invoke-Checked([string]$Program, [string[]]$Arguments) {
@@ -139,17 +140,7 @@ if (Test-Path -LiteralPath $receiptPath -PathType Leaf) {
         [string]$cachedReceipt.profile -ne $(if ($InstallNvidiaGpu) { 'nvidia' } else { 'cpu' })) {
         throw 'Cached native build receipt does not match the pinned source recipe.'
     }
-    foreach ($wheel in $cachedReceipt.wheels) {
-        if ([string]$wheel.filename -notmatch '^(av-18\.1\.0|ctranslate2-4\.8\.2)-[A-Za-z0-9._-]+\.whl$') {
-            throw 'Cached native build receipt has an invalid wheel filename.'
-        }
-        $cachedWheel = Join-Path $Wheelhouse ([string]$wheel.filename)
-        if (-not (Test-Path -LiteralPath $cachedWheel -PathType Leaf) -or
-            (Get-Item -LiteralPath $cachedWheel).Length -ne [long]$wheel.bytes -or
-            (Get-FileHash -LiteralPath $cachedWheel -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$wheel.sha256) {
-            throw "Cached native wheel differs from its build receipt: $($wheel.filename)"
-        }
-    }
+    Restore-NativeWheelCache -BuildRoot $BuildRoot -Wheelhouse $Wheelhouse -Wheels @($cachedReceipt.wheels)
     $config = Join-Path $BuildRoot 'ffmpeg-config.mak'
     if ((Get-FileHash -LiteralPath $config -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$cachedReceipt.ffmpeg_config_sha256) {
         throw 'Cached FFmpeg configuration differs from its build receipt.'
@@ -226,5 +217,6 @@ $receipt = [ordered]@{
     ffmpeg_config_sha256 = (Get-FileHash -LiteralPath (Join-Path $BuildRoot 'ffmpeg-config.mak') -Algorithm SHA256).Hash.ToLowerInvariant()
     wheels = @($wheels | ForEach-Object { [ordered]@{ filename = $_.Name; bytes = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() } })
 }
+Save-NativeWheelCache -BuildRoot $BuildRoot -Wheelhouse $Wheelhouse -Wheels @($receipt.wheels)
 $receipt | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $BuildRoot 'native-build-receipt.json') -Encoding UTF8
 Write-Host "Built PyAV and CTranslate2 from pinned source in $Wheelhouse"
