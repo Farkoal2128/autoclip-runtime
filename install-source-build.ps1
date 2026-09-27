@@ -151,7 +151,7 @@ if (-not $vsRoot) {
 if (-not $vsRoot) { throw 'Visual Studio 2022 C++ Build Tools and Windows SDK are unavailable after provisioning.' }
 $vcvars = Join-Path $vsRoot 'VC\Auxiliary\Build\vcvars64.bat'
 if (-not (Test-Path -LiteralPath $vcvars)) { throw 'Visual Studio 2022 vcvars64.bat is missing.' }
-& cmd.exe /c "call `"$vcvars`" >nul && cl.exe /? >nul 2>&1"
+& cmd.exe /c "call `"$vcvars`" >nul && where cl.exe >nul"
 if ($LASTEXITCODE -ne 0) { throw 'Visual Studio x64 compiler validation failed.' }
 $sdkIncludeRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Include'
 $sdkHeaders = @(Get-ChildItem -LiteralPath $sdkIncludeRoot -Directory -ErrorAction SilentlyContinue | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'um\Windows.h') -PathType Leaf })

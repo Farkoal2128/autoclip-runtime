@@ -20,7 +20,7 @@ class CpuBootstrapContractTests(unittest.TestCase):
             "mingw-w64-ucrt-x86_64-nasm",
             "'make', 'diffutils', 'pkgconf'",
             "$git.Source --version",
-            "cl.exe /?",
+            "where cl.exe",
             "nasm -v",
             "make --version",
             "pkg-config --version",

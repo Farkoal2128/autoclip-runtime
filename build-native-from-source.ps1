@@ -218,7 +218,7 @@ $receipt = [ordered]@{
         git = ((& git --version) | Out-String).Trim()
         cmake = ((& $cmake --version | Select-Object -First 1) | Out-String).Trim()
         nasm = ((& nasm -v) | Out-String).Trim()
-        msvc = ((& cl.exe /? 2>&1 | Select-Object -First 1) | Out-String).Trim()
+        msvc = (Get-Item -LiteralPath (Get-Command cl.exe).Source).VersionInfo.ProductVersion
         msys2_packages = @($requiredMsysPackages | ForEach-Object { & $MsysBash -lc "pacman -Q $_" })
     }
     ffmpeg_config_sha256 = (Get-FileHash -LiteralPath (Join-Path $BuildRoot 'ffmpeg-config.mak') -Algorithm SHA256).Hash.ToLowerInvariant()
