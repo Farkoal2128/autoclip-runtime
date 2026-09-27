@@ -20,7 +20,7 @@ class CpuBootstrapContractTests(unittest.TestCase):
             "mingw-w64-ucrt-x86_64-nasm",
             "'make', 'diffutils', 'pkgconf'",
             "$git.Source --version",
-            "cl.exe /Bv",
+            "cl.exe /?",
             "nasm -v",
             "make --version",
             "pkg-config --version",
@@ -29,6 +29,7 @@ class CpuBootstrapContractTests(unittest.TestCase):
                 self.assertIn(item, installer)
         self.assertEqual(installer.count("-requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath"), 2)
         self.assertNotIn("-requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 Microsoft.VisualStudio.Component.Windows10SDK.20348", installer)
+        self.assertIn("Join-Path $_.FullName 'um\\Windows.h'", installer)
 
     def test_cpu_receipt_records_profile_and_build_inputs(self) -> None:
         builder = (ROOT / "build-native-from-source.ps1").read_text(encoding="utf-8")
