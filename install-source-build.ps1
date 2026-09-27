@@ -158,10 +158,8 @@ $sdkIncludeRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Include'
 $sdkHeaders = @(Get-ChildItem -LiteralPath $sdkIncludeRoot -Directory -ErrorAction SilentlyContinue | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'um\Windows.h') -PathType Leaf })
 if (-not $sdkHeaders.Count) { throw 'Windows SDK headers are unavailable after provisioning.' }
 if ($InstallNvidiaGpu) {
-    if (-not $CudaRoot) { $CudaRoot = $env:CUDA_PATH }
-    if (-not $CudaRoot -or -not (Test-Path -LiteralPath (Join-Path $CudaRoot 'bin\nvcc.exe') -PathType Leaf)) {
-        throw 'NVIDIA GPU install requires CUDA 12.8 toolkit for recipient-side CTranslate2 compilation. Pass -CudaRoot.'
-    }
+    . (Join-Path $PSScriptRoot 'cuda-prerequisites.ps1')
+    $CudaRoot = Ensure-CudaPrerequisites -CudaRoot $CudaRoot -CacheRoot $publisherCache
 }
 if ($PrerequisitesOnly) { Write-Host 'Prerequisites are ready.'; return }
 
@@ -200,7 +198,9 @@ try {
         throw 'Release manifest SHA-256 mismatch.'
     }
     $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-    if ($manifest.schema_version -ne 3 -or @($manifest.external_assets).Count -ne 4 -or
+    if ($manifest.schema_version -ne 3 -or @($manifest.external_assets).Count -ne 3 -or
+        @($manifest.external_assets | Where-Object { $_.kind -eq 'python_wheel' -and $_.filename -eq 'nvidia_cublas_cu12-12.4.5.8-py3-none-win_amd64.whl' }).Count -ne 1 -or
+        @($manifest.external_assets | Where-Object { $_.kind -eq 'python_wheel' -and $_.filename -ne 'nvidia_cublas_cu12-12.4.5.8-py3-none-win_amd64.whl' }).Count -ne 0 -or
         -not $manifest.native_build -or @($manifest.native_build.wheel_names).Count -ne 2) {
         throw 'Unsupported or incomplete source-build manifest.'
     }
@@ -315,7 +315,7 @@ try {
     $expectedWheelCount = @($manifest.publisher_wheels).Count + @($manifest.native_build.wheel_names).Count + $nvidiaWheelCount + @(Get-ChildItem -LiteralPath $wheelhouse -Filter '*.whl' -File).Count
     & $python (Join-Path $InstallRoot 'verify-install-wheels.py') $wheelhouse $externalWheels --count $expectedWheelCount
     if ($LASTEXITCODE -ne 0) { throw 'Wheel ZIP or RECORD integrity check failed.' }
-    $autoclipPackage = if ($InstallNvidiaGpu) { 'autoclip[gpu]==0.1.0.dev0' } else { 'autoclip==0.1.0.dev0' }
+    $autoclipPackage = if ($InstallNvidiaGpu) { 'autoclip[gpu-source]==0.1.0.dev0' } else { 'autoclip==0.1.0.dev0' }
     & $uv.Source pip install --python $python --no-cache --offline --no-index --find-links $wheelhouse --find-links $externalWheels $autoclipPackage
     if ($LASTEXITCODE -ne 0) { throw 'Offline AutoClip installation failed.' }
     if (-not $openblasArchive -or -not $openblasAsset) { throw 'Pinned OpenBLAS publisher archive is missing.' }

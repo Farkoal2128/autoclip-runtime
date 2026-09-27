@@ -78,9 +78,8 @@ if (-not (Get-Command nasm.exe -ErrorAction SilentlyContinue)) {
 }
 if (-not (Get-Command nasm.exe -ErrorAction SilentlyContinue)) { throw 'NASM is required for codec-free FFmpeg.' }
 if ($InstallNvidiaGpu) {
-    if (-not $CudaRoot -or -not (Test-Path -LiteralPath (Join-Path $CudaRoot 'bin\nvcc.exe'))) { throw 'NVIDIA GPU build requires CUDA toolkit with nvcc.exe.' }
-    $cudaVersion = & (Join-Path $CudaRoot 'bin\nvcc.exe') --version | Out-String
-    if ($LASTEXITCODE -ne 0 -or $cudaVersion -notmatch 'release 12\.8,') { throw 'NVIDIA GPU build requires CUDA toolkit 12.8.' }
+    . (Join-Path $PSScriptRoot 'cuda-prerequisites.ps1')
+    if (-not (Test-CudaBuildRoot $CudaRoot)) { throw 'NVIDIA GPU build requires complete CUDA toolkit 12.8 build inputs.' }
 }
 $openblasHash = (Get-FileHash -LiteralPath $OpenBlasArchive -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($openblasHash -ne '8b04387766efc05c627e26d24797ec0d4ed4c105ec14fa7400aa84a02db22b66') {
