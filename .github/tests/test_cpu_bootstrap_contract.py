@@ -36,6 +36,7 @@ class CpuBootstrapContractTests(unittest.TestCase):
         self.assertIn("profile = if ($InstallNvidiaGpu) { 'nvidia' } else { 'cpu' }", builder)
         self.assertIn("build_prerequisites", builder)
         self.assertIn("cmake_arguments", builder)
+        self.assertIn("$windowsTar = Join-Path $env:SystemRoot 'System32\\tar.exe'", builder)
 
 
 if __name__ == "__main__":

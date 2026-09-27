@@ -31,3 +31,13 @@ try {
     $env:Path = $oldPath
     if (Test-Path -LiteralPath $fixture) { Remove-Item -LiteralPath $fixture -Recurse -Force }
 }
+
+$builder = Get-Content -LiteralPath (Join-Path $repoRoot 'build-native-from-source.ps1') -Raw
+$builderAst = [System.Management.Automation.Language.Parser]::ParseInput($builder, [ref]$tokens, [ref]$errors)
+if ($errors) { throw $errors[0] }
+$checked = $builderAst.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-Checked' }, $true)
+if (-not $checked) { throw 'Native build checked command helper is absent.' }
+Invoke-Expression $checked.Extent.Text
+$returned = @(Invoke-Checked 'cmd.exe' @('/c', 'echo', 'git-progress'))
+if ($returned.Count) { throw 'Checked command progress contaminated a source path return value.' }
+Write-Output 'Native checked command keeps progress out of return values.'

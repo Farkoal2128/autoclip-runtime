@@ -14,7 +14,7 @@ $ErrorActionPreference = 'Stop'
 $requiredMsysPackages = @('make', 'diffutils', 'pkgconf', 'mingw-w64-ucrt-x86_64-nasm')
 
 function Invoke-Checked([string]$Program, [string[]]$Arguments) {
-    & $Program @Arguments
+    & $Program @Arguments | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "$Program failed with exit code $LASTEXITCODE" }
 }
 
@@ -92,8 +92,10 @@ $ffmpegArchive = Get-VerifiedSource 'ffmpeg-8.1.2.tar.xz' 'https://ffmpeg.org/re
 $pyavArchive = Get-VerifiedSource 'av-18.1.0.tar.gz' 'https://files.pythonhosted.org/packages/8d/f4/f22114d30d3435e38c6af2b4870f37b864403dca6ae7af747a289ce0a18e/av-18.1.0.tar.gz' 4451061 '47bfc286e1bc9de7ab4681fc2b575cd2460a66919d31ffe1bd5aa54fae531a28'
 $ffmpegSource = Join-Path $BuildRoot 'ffmpeg-8.1.2'
 $pyavSource = Join-Path $BuildRoot 'av-18.1.0'
-if (-not (Test-Path -LiteralPath $ffmpegSource)) { Invoke-Checked 'tar' @('-xf', $ffmpegArchive, '-C', $BuildRoot) }
-if (-not (Test-Path -LiteralPath $pyavSource)) { Invoke-Checked 'tar' @('-xf', $pyavArchive, '-C', $BuildRoot) }
+$windowsTar = Join-Path $env:SystemRoot 'System32\tar.exe'
+if (-not (Test-Path -LiteralPath $windowsTar -PathType Leaf)) { throw 'Windows tar.exe is required for native source extraction.' }
+if (-not (Test-Path -LiteralPath $ffmpegSource)) { Invoke-Checked $windowsTar @('-xf', $ffmpegArchive, '-C', $BuildRoot) }
+if (-not (Test-Path -LiteralPath $pyavSource)) { Invoke-Checked $windowsTar @('-xf', $pyavArchive, '-C', $BuildRoot) }
 $oneDnnSource = Get-PinnedGitSource 'onednn-v3.1.1-source' 'https://github.com/uxlfoundation/oneDNN.git' '64f6bcbcbab628e96f33a62c3e975f8535a7bde4'
 $ct2Source = Get-PinnedGitSource 'ctranslate2-v4.8.2-source' 'https://github.com/OpenNMT/CTranslate2.git' 'd44d2d069eb88c7b7804da864c10c201501cb4a9'
 $openblasRoot = Join-Path $BuildRoot 'openblas-0.3.30'
