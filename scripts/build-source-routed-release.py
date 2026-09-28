@@ -120,6 +120,8 @@ def attach_review_index(wheels: list[Path], source: Path, target: Path) -> None:
         if hashlib.sha256(wheel.read_bytes()).hexdigest() != reviewed[wheel.name]["sha256"]:
             raise ValueError(f"legal index wheel hash mismatch: {wheel.name}")
         row = reviewed[wheel.name]
+        with zipfile.ZipFile(wheel) as archive:
+            normalize_license_row(row, archive.read)
         if row.get("normalized_name") == "autoclip":
             with zipfile.ZipFile(wheel) as archive:
                 for name in archive.namelist():
@@ -159,6 +161,40 @@ def attach_review_index(wheels: list[Path], source: Path, target: Path) -> None:
         "This index is technical evidence for review, not legal approval.\n",
         encoding="utf-8",
     )
+
+
+def normalize_license_row(row: dict, read_member) -> None:
+    """Normalize only reviewed exact legal bytes; retain original metadata."""
+    rules = json.loads((Path(__file__).resolve().parents[1] / 'review-license-normalization.json').read_text(encoding='utf-8'))
+    if rules.get('schema_version') != 1:
+        raise ValueError('Unsupported license normalization evidence')
+    matches = [r for r in rules['packages'] if r['normalized_name'] == row.get('normalized_name') and r['version'] == row.get('version')]
+    if not matches:
+        return
+    if len(matches) != 1:
+        raise ValueError('Duplicate license normalization evidence')
+    rule = matches[0]
+    member = rule['legal_member']
+    data = read_member(member)
+    if hashlib.sha256(data).hexdigest() != rule['legal_sha256'] or row.get('legal_sha256', {}).get(member) != rule['legal_sha256']:
+        raise ValueError(f"Exact license evidence differs: {row['filename']}")
+    if row.get('license_expression') not in (None, rule['license_expression']):
+        raise ValueError(f"License expression conflicts with reviewed evidence: {row['filename']}")
+    row['license_expression'] = rule['license_expression']
+    row['license_normalization_evidence'] = {k: rule[k] for k in ('legal_member', 'legal_sha256', 'basis')}
+
+
+def synchronize_sbom_index(index: dict, plan: dict) -> None:
+    planned = {(r['wheel'], r['wheel_sha256'], r['purl']): r for r in plan['components']}
+    for row in index['components']:
+        evidence = planned[(row['wheel'], row['wheel_sha256'], row['purl'])]
+        selected = [e['selected'] for e in evidence.get('expressions', [])]
+        if row.get('selected_expressions') != selected:
+            row.setdefault('previous_selected_expressions', row.get('selected_expressions', []))
+            row['selected_expressions'] = selected
+        if evidence.get('license_evidence'):
+            row['license_evidence'] = evidence['license_evidence']
+        row['relationship'] = 'SBOM-declared; conservatively covered without asserting Windows incorporation'
 
 
 def attach_source_artifacts(inputs: Path, cache: Path, target: Path) -> None:
@@ -229,6 +265,8 @@ def attach_sbom_packet(packet: Path, target: Path, plan: dict) -> None:
     shutil.copy2(base / "sbom-packet-manifest.json",
                  target / "notices-and-source" / "sbom-packet-manifest.json")
     by_key = {(row["wheel"], row["wheel_sha256"], row["purl"]): row for row in components}
+    synchronize_sbom_index(index, plan)
+    (target / 'notices-and-source/sbom-component-index.json').write_text(json.dumps(index, indent=2) + '\n', encoding='utf-8')
     for row in plan["components"]:
         source = by_key[(row["wheel"], row["wheel_sha256"], row["purl"])]
         row["notice_status"] = "SBOM_notice_source_packet_staged"

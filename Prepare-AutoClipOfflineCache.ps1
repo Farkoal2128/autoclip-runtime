@@ -4,6 +4,8 @@ param(
     [string]$StageWheelhouse,
     [switch]$Offline,
     [switch]$InstallNvidiaGpu,
+    [switch]$AcceptNvidiaTerms,
+    [switch]$NonInteractive,
     [scriptblock]$DownloadScript
 )
 
@@ -18,6 +20,8 @@ $items = @($manifest.publisher_wheels | ForEach-Object {
     [pscustomobject]@{ Wheel = $_; External = $false }
 })
 if ($InstallNvidiaGpu) {
+    if (-not (Get-Command Confirm-PrerequisiteTerms -ErrorAction SilentlyContinue)) { . (Join-Path $PSScriptRoot 'prerequisite-terms.ps1') }
+    Confirm-PrerequisiteTerms -Id cublas -ReceiptRoot $CacheRoot -Accepted:$AcceptNvidiaTerms -NonInteractive:$NonInteractive
     $items += @($manifest.external_assets | Where-Object { $_.kind -eq 'python_wheel' } | ForEach-Object {
         [pscustomobject]@{ Wheel = $_; External = $true }
     })

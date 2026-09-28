@@ -35,6 +35,8 @@ function Ensure-CudaPrerequisites {
         [scriptblock]$InstallScript,
         [scriptblock]$ProbeScript,
         [scriptblock]$BootIdScript,
+        [switch]$AcceptNvidiaTerms,
+        [switch]$NonInteractive,
         [string]$StandardRoot = (Join-Path $env:ProgramFiles 'NVIDIA GPU Computing Toolkit\CUDA\v12.8'),
         [long]$InstallerSize = $script:CudaInstallerSize,
         [string]$InstallerSha256 = $script:CudaInstallerSha256
@@ -62,6 +64,10 @@ function Ensure-CudaPrerequisites {
     if ($CudaRoot -ne $standardRoot) {
         throw "Selected CUDA root is incomplete or not 12.8: $CudaRoot. Automatic provisioning uses $standardRoot."
     }
+    if (-not (Get-Command Confirm-PrerequisiteTerms -ErrorAction SilentlyContinue)) {
+        . (Join-Path $PSScriptRoot 'prerequisite-terms.ps1')
+    }
+    Confirm-PrerequisiteTerms -Id cuda -ReceiptRoot $CacheRoot -Accepted:$AcceptNvidiaTerms -NonInteractive:$NonInteractive
     if (-not $InstallScript) {
         $InstallScript = {
             param($file, $arguments)

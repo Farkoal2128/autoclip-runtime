@@ -17,6 +17,31 @@ spec.loader.exec_module(module)
 
 
 class SourceRoutedReleaseTest(unittest.TestCase):
+    def test_exact_legacy_license_text_is_normalized_without_losing_metadata(self):
+        # The small raw license fixture is retained with the test for portable CI.
+        license_bytes = (Path(__file__).parent / 'fixtures' / 'distro-LICENSE').read_bytes()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            wheel = root / 'distro-1.9.0-py3-none-any.whl'
+            member = 'distro-1.9.0.dist-info/LICENSE'
+            with zipfile.ZipFile(wheel,'w') as z:
+                z.writestr(member, license_bytes)
+            row = dict(filename=wheel.name, normalized_name='distro', version='1.9.0', sha256=hashlib.sha256(wheel.read_bytes()).hexdigest(), license_expression=None, legacy_license_metadata='Apache License, Version 2.0', legal_sha256={member:hashlib.sha256(license_bytes).hexdigest()})
+            audit = root / 'audit.json'
+            audit.write_text(json.dumps(dict(schema_version=1,packages=[row])))
+            target = root / 'target'
+            module.attach_review_index([wheel],audit,target)
+            result=json.loads((target/'notices-and-source/legal-index.json').read_text())['packages'][0]
+            self.assertEqual(result['license_expression'],'Apache-2.0')
+            self.assertEqual(result['legacy_license_metadata'],row['legacy_license_metadata'])
+            # Same metadata with modified raw text cannot inherit a reviewed label.
+            with zipfile.ZipFile(wheel,'w') as z:
+                z.writestr(member,b'different grant')
+            row['sha256']=hashlib.sha256(wheel.read_bytes()).hexdigest()
+            audit.write_text(json.dumps(dict(schema_version=1,packages=[row])))
+            with self.assertRaisesRegex(ValueError,'license evidence'):
+                module.attach_review_index([wheel],audit,root/'other')
+
     def test_sbom_packet_requires_exact_files_and_component_identity(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -33,15 +58,17 @@ class SourceRoutedReleaseTest(unittest.TestCase):
             component = {"wheel": "example.whl", "wheel_sha256": "a" * 64,
                          "purl": "pkg:cargo/example@1", "installed_legal_paths": [relative],
                          "installed_source_path": None, "source_url": "https://example.org/source",
-                         "source_sha256": "b" * 64}
+                         "source_sha256": "b" * 64, "selected_expressions": []}
             (packet / "sbom-component-index.json").write_text(json.dumps({
                 "schema_version": 1, "component_count": 1, "components": [component]}))
             plan = {"components": [{"wheel": "example.whl", "wheel_sha256": "a" * 64,
-                                    "purl": "pkg:cargo/example@1"}]}
+                                    "purl": "pkg:cargo/example@1", "expressions": [{"original":"Apache-2.0", "selected":"Apache-2.0", "licenses":["Apache-2.0"]}]}]}
             target = root / "target"
             target.mkdir()
             module.attach_sbom_packet(root / "packet", target, plan)
             self.assertEqual((target / relative).read_bytes(), b"grant")
+            selected=json.loads((target/'notices-and-source/sbom-component-index.json').read_text())['components'][0]
+            self.assertEqual(selected['selected_expressions'], ['Apache-2.0'])
             legal.write_bytes(b"wrong")
             with self.assertRaisesRegex(ValueError, "SBOM packet member differs"):
                 module.attach_sbom_packet(root / "packet", root / "other", plan)

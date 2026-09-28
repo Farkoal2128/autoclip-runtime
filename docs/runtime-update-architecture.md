@@ -118,3 +118,25 @@ Publisher cache preparation defaults to ordinary dependency wheels. Explicit
 wheel and never downloads missing or corrupt entries. The source-build installer
 forwards NVIDIA selection when using `-OfflinePublisherCache`; source checkouts,
 CUDA Toolkit, build tools and models retain separate acquisition requirements.
+
+## Source-build prerequisite consent
+
+Source-build installers and publisher-cache preparation expose `-AcceptNvidiaTerms`
+and `-NonInteractive`; installers/updaters also expose `-AcceptMicrosoftTerms`.
+These are explicit recipient declarations after reviewing the versioned terms,
+not defaults implied by NVIDIA profile preservation. Without an acceptance switch,
+interactive runs require the exact response `ACCEPT`; unattended runs fail before
+acquiring or installing the selected prerequisite. CUDA's existing valid build
+root can be reused without a new Toolkit install; cuBLAS authorization is separate.
+CPU mode never presents or accepts NVIDIA terms. Already installed valid Microsoft
+inputs do not trigger provisioning consent.
+
+The exact terms snapshots and their hashes are recorded in `prerequisite-terms.json`.
+Presentation includes a version, primary URL and local copy. Each affirmative
+declaration writes a receipt under the artifact cache's `terms` directory. It
+does not claim independently verified authority or entitlement. Microsoft Build
+Tools/VC installers retain their native agreement UI rather than quiet/package
+agreement acceptance. Equivalence of downloaded reference terms to exact installer
+terms remains a reviewer question, and the native agreement is still presented.
+No automatic script or test may provide a real recipient's acceptance without
+their authorization.

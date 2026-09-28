@@ -1,4 +1,6 @@
 $ErrorActionPreference = 'Stop'
+# This cache fixture does not accept real terms; consent refusal has its own behavioral test.
+function Confirm-PrerequisiteTerms { }
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $prepare = Join-Path $repoRoot 'Prepare-AutoClipOfflineCache.ps1'
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('autoclip-nvidia-cache-' + [guid]::NewGuid().ToString('N'))

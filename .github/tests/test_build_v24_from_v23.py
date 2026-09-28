@@ -32,7 +32,7 @@ class BuildV24Tests(unittest.TestCase):
                     archive.writestr(font, (font + " OFL text").encode())
                 archive.writestr(readme, b"font map")
             app_member = "wheelhouse/" + wheel.name
-            legal = {"schema_version": 1, "packages": [{
+            legal = {"schema_version": 1, "native_build": {"runtime_commit": "base-revision"}, "packages": [{
                 "normalized_name": "autoclip", "filename": wheel.name,
                 "sha256": digest(wheel.read_bytes()), "legal_files": [],
                 "legal_sha256": {}, "verified_sidecar_copies": [],
@@ -89,6 +89,8 @@ class BuildV24Tests(unittest.TestCase):
                 self.assertEqual(archive.read("build-native-from-source.ps1"), snapshot["build-native-from-source.ps1"])
                 self.assertEqual(archive.read("Prepare-AutoClipOfflineCache.ps1"), snapshot["Prepare-AutoClipOfflineCache.ps1"])
                 self.assertIsNone(next_manifest["native_build"]["runtime_commit"])
+                self.assertIsNone(next_legal["native_build"]["runtime_commit"])
+                self.assertEqual(next_legal["native_build"]["runtime_base_commit"],"base-revision")
                 provenance = json.loads(archive.read("notices-and-source/build-provenance.json"))
                 self.assertEqual(provenance["source_state"], "local_uncommitted_snapshot")
                 self.assertEqual(provenance["base_archive_sha256"], old_archive_hash)

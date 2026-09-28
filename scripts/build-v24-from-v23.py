@@ -112,6 +112,7 @@ def derive(
         manifest["native_build"]["runtime_commit"] = None
         manifest["native_build"]["runtime_base_commit"] = base_commit
         manifest["native_build"]["candidate_source_state"] = "local_uncommitted_snapshot"
+        legal['native_build'] = dict(manifest['native_build'])
         legal["v24_base_archive_sha256"] = expected_base_hash
         legal["candidate_source_state"] = "local_uncommitted_snapshot"
         replacements["notices-and-source/legal-index.json"] = encoded(legal)

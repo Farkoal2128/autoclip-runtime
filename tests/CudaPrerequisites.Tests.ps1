@@ -1,5 +1,7 @@
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '..\cuda-prerequisites.ps1')
+# Provisioning behavior fixture: consent is tested independently; no real vendor acceptance.
+function Confirm-PrerequisiteTerms { }
 
 function Assert([bool]$Condition, [string]$Message) {
     if (-not $Condition) { throw $Message }

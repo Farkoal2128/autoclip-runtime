@@ -42,6 +42,13 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./.github/tests/OptionalNvidiaPublisherCache.Tests.ps1
+      - name: Prerequisite consent and CUDA provisioning regression cases
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./tests/PrerequisiteConsent.Tests.ps1
+          ./tests/PrerequisiteTerms.Tests.ps1
+          ./tests/CudaPrerequisites.Tests.ps1
       - name: Source-routed package regression cases
         shell: pwsh
         run: |

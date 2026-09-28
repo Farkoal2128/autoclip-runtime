@@ -7,6 +7,9 @@ param(
     [string]$MsysBash,
     [string]$CudaRoot,
     [switch]$InstallNvidiaGpu,
+    [switch]$AcceptNvidiaTerms,
+    [switch]$AcceptMicrosoftTerms,
+    [switch]$NonInteractive,
     [switch]$CpuOnly,
     [string]$ShortcutPath,
     [string]$PreviousReleaseId,
@@ -411,6 +414,12 @@ try {
         if ($NativeBuildRoot) { $arguments.NativeBuildRoot = $NativeBuildRoot }
         if ($MsysBash) { $arguments.MsysBash = $MsysBash }
         if ($CudaRoot) { $arguments.CudaRoot = $CudaRoot }
+        foreach ($name in @('AcceptNvidiaTerms', 'AcceptMicrosoftTerms', 'NonInteractive')) {
+            if (Get-Variable -Name $name -ValueOnly) {
+                if (-not (Get-Command -Name $InstallerPath).Parameters.ContainsKey($name)) { throw "Selected installer does not support -$name." }
+                $arguments[$name] = $true
+            }
+        }
         if ($wantNvidiaGpu) {
             if (-not (Get-Command -Name $InstallerPath).Parameters.ContainsKey('InstallNvidiaGpu')) {
                 if ($InstallNvidiaGpu) { throw 'The selected installer does not support -InstallNvidiaGpu.' }

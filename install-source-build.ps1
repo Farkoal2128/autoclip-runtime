@@ -6,6 +6,9 @@ param(
     [string]$MsysBash,
     [string]$CudaRoot,
     [switch]$InstallNvidiaGpu,
+    [switch]$AcceptNvidiaTerms,
+    [switch]$AcceptMicrosoftTerms,
+    [switch]$NonInteractive,
     [switch]$OfflinePublisherCache,
     [switch]$InstallOllama,
     [switch]$PrerequisitesOnly,
@@ -58,6 +61,7 @@ if (Test-Path -LiteralPath $InstallRoot) {
     }
 }
 
+. (Join-Path $PSScriptRoot 'prerequisite-terms.ps1')
 function Update-ProcessPath {
     $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
     $user = [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -66,9 +70,17 @@ function Update-ProcessPath {
 Update-ProcessPath
 
 function Install-WingetPackage([string]$Package, [string]$Version, [string]$Override = '') {
+    if ($Package -eq 'Microsoft.VisualStudio.2022.BuildTools') {
+        Confirm-PrerequisiteTerms -Id build-tools -ReceiptRoot $publisherCache -Accepted:$AcceptMicrosoftTerms -NonInteractive:$NonInteractive
+        # Let Microsoft's installer present and collect its own exact agreement.
+        $Override = '--wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.Windows10SDK.20348'
+    }
     $winget = Get-Command winget -ErrorAction SilentlyContinue
     if (-not $winget) { throw "Windows Package Manager is required to provision $Package." }
     $arguments = @('install', '--exact', '--id', $Package, '--version', $Version, '--architecture', 'x64', '--source', 'winget', '--accept-source-agreements', '--accept-package-agreements')
+    if ($Package -eq 'Microsoft.VisualStudio.2022.BuildTools') {
+        $arguments = @('install', '--exact', '--id', $Package, '--version', $Version, '--architecture', 'x64', '--source', 'winget', '--accept-source-agreements', '--interactive')
+    }
     if ($Override) { $arguments += @('--override', $Override) }
     & $winget.Source @arguments
     if ($LASTEXITCODE -ne 0) { throw "winget installation failed: $Package $Version (exit $LASTEXITCODE)." }
@@ -159,7 +171,7 @@ $sdkHeaders = @(Get-ChildItem -LiteralPath $sdkIncludeRoot -Directory -ErrorActi
 if (-not $sdkHeaders.Count) { throw 'Windows SDK headers are unavailable after provisioning.' }
 if ($InstallNvidiaGpu) {
     . (Join-Path $PSScriptRoot 'cuda-prerequisites.ps1')
-    $CudaRoot = Ensure-CudaPrerequisites -CudaRoot $CudaRoot -CacheRoot $publisherCache
+    $CudaRoot = Ensure-CudaPrerequisites -CudaRoot $CudaRoot -CacheRoot $publisherCache -AcceptNvidiaTerms:$AcceptNvidiaTerms -NonInteractive:$NonInteractive
 }
 if ($PrerequisitesOnly) { Write-Host 'Prerequisites are ready.'; return }
 
@@ -238,7 +250,7 @@ try {
     . (Join-Path $InstallRoot 'upstream-assets.ps1')
     $wheelProfile = if ($InstallNvidiaGpu) { 'nvidia' } else { 'cpu' }
     $externalWheels = Join-Path $InstallRoot "publisher-wheels\$wheelProfile"
-    & (Join-Path $InstallRoot 'Prepare-AutoClipOfflineCache.ps1') -ManifestPath $manifestPath -CacheRoot $publisherCache -StageWheelhouse $externalWheels -Offline:$OfflinePublisherCache -InstallNvidiaGpu:$InstallNvidiaGpu
+    & (Join-Path $InstallRoot 'Prepare-AutoClipOfflineCache.ps1') -ManifestPath $manifestPath -CacheRoot $publisherCache -StageWheelhouse $externalWheels -Offline:$OfflinePublisherCache -InstallNvidiaGpu:$InstallNvidiaGpu -AcceptNvidiaTerms:$AcceptNvidiaTerms -NonInteractive:$NonInteractive
     if (-not $?) { throw 'Publisher wheel acquisition failed.' }
     $microsoft = $null
     $openblasArchive = $null
@@ -265,6 +277,7 @@ try {
                 continue
             }
             $microsoft = $destination
+            Confirm-PrerequisiteTerms -Id vc-runtime -ReceiptRoot $publisherCache -Accepted:$AcceptMicrosoftTerms -NonInteractive:$NonInteractive
         }
         if ($asset.kind -eq 'openblas_archive') {
             $openblasArchive = $destination
@@ -273,7 +286,7 @@ try {
         Get-PinnedUpstreamAsset -Uri ([string]$asset.url) -Sha256 ([string]$asset.sha256) -Size ([long]$asset.bytes) -Destination $destination | Out-Null
     }
     if ($microsoft) {
-        $process = Start-Process -FilePath $microsoft -ArgumentList '/install','/quiet','/norestart' -Wait -PassThru -Verb RunAs
+        $process = Start-Process -FilePath $microsoft -ArgumentList '/install','/norestart' -Wait -PassThru -Verb RunAs -WindowStyle Hidden
         if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
             throw "Microsoft Visual C++ Redistributable installation failed: $($process.ExitCode)"
         }
