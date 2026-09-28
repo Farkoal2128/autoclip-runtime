@@ -17,6 +17,17 @@ spec.loader.exec_module(module)
 
 
 class SourceRoutedReleaseTest(unittest.TestCase):
+    def test_selected_branch_must_match_exact_grant_evidence(self):
+        raw=b'fixture Apache grant'
+        path='notices-and-source/fixture/LICENSE-APACHE'
+        row=dict(wheel='fixture.whl',wheel_sha256='a'*64,purl='pkg:cargo/fixture@1',expressions=[dict(original='MIT OR Apache-2.0',selected='MIT',licenses=['MIT'])],license_evidence=[dict(expression='Apache-2.0',path=path,sha256=hashlib.sha256(raw).hexdigest())])
+        index=dict(components=[dict(wheel='fixture.whl',wheel_sha256='a'*64,purl=row['purl'])])
+        with self.assertRaisesRegex(ValueError,'selected branch'):
+            module.synchronize_sbom_index(index,dict(components=[row]))
+        row['expressions'][0].update(selected='Apache-2.0',licenses=['Apache-2.0'])
+        module.synchronize_sbom_index(index,dict(components=[row]))
+        self.assertEqual(index['components'][0]['selected_expressions'],['Apache-2.0'])
+
     def test_exact_legacy_license_text_is_normalized_without_losing_metadata(self):
         # The small raw license fixture is retained with the test for portable CI.
         license_bytes = (Path(__file__).parent / 'fixtures' / 'distro-LICENSE').read_bytes()
@@ -61,6 +72,10 @@ class SourceRoutedReleaseTest(unittest.TestCase):
                          "source_sha256": "b" * 64, "selected_expressions": []}
             (packet / "sbom-component-index.json").write_text(json.dumps({
                 "schema_version": 1, "component_count": 1, "components": [component]}))
+            original_index=(packet/'sbom-component-index.json').read_bytes()
+            manifest['files'].append(dict(path='notices-and-source/sbom-component-index.json',bytes=len(original_index),sha256=hashlib.sha256(original_index).hexdigest()))
+            manifest['file_count']=2
+            (packet/'sbom-packet-manifest.json').write_text(json.dumps(manifest))
             plan = {"components": [{"wheel": "example.whl", "wheel_sha256": "a" * 64,
                                     "purl": "pkg:cargo/example@1", "expressions": [{"original":"Apache-2.0", "selected":"Apache-2.0", "licenses":["Apache-2.0"]}]}]}
             target = root / "target"
@@ -69,6 +84,11 @@ class SourceRoutedReleaseTest(unittest.TestCase):
             self.assertEqual((target / relative).read_bytes(), b"grant")
             selected=json.loads((target/'notices-and-source/sbom-component-index.json').read_text())['components'][0]
             self.assertEqual(selected['selected_expressions'], ['Apache-2.0'])
+            final_manifest=json.loads((target/'notices-and-source/sbom-packet-manifest.json').read_text())
+            for row in final_manifest['files']:
+                raw=(target/row['path']).read_bytes()
+                self.assertEqual(row['sha256'],hashlib.sha256(raw).hexdigest())
+                self.assertEqual(row['bytes'],len(raw))
             legal.write_bytes(b"wrong")
             with self.assertRaisesRegex(ValueError, "SBOM packet member differs"):
                 module.attach_sbom_packet(root / "packet", root / "other", plan)

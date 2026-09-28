@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "files": [
+    {
+      "path": "review-component-evidence/cffi-v2.1.1-libffi-LICENSE",
+      "url": "https://raw.githubusercontent.com/python-cffi/cffi/v2.1.1/src/c/libffi_x86_x64/LICENSE",
+      "bytes": 1060,
+      "sha256": "40a537c7d74baeed3831304e92d1664ababd7ad8a3cf29f11a257c9e47145248",
+      "destination": "notices-and-source/component-evidence/cffi-v2.1.1-libffi-LICENSE"
+    },
+    {
+      "path": "review-component-evidence/cffi-v2.1.1-setup.py",
+      "url": "https://raw.githubusercontent.com/python-cffi/cffi/v2.1.1/setup.py",
+      "bytes": 8199,
+      "sha256": "f4205f108b2fc7798e854724918a2790951137200980b65b6a5e652d612b07f7",
+      "destination": "notices-and-source/component-evidence/cffi-v2.1.1-setup.py"
+    },
+    {
+      "path": "review-component-evidence/gcc-9.3.0-COPYING.RUNTIME",
+      "url": "https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-9.3.0/COPYING.RUNTIME",
+      "bytes": 3324,
+      "sha256": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74",
+      "destination": "notices-and-source/component-evidence/gcc-9.3.0-COPYING.RUNTIME"
+    },
+    {
+      "path": "review-component-evidence/gcc-9.3.0-COPYING3",
+      "url": "https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-9.3.0/COPYING3",
+      "bytes": 35147,
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+      "destination": "notices-and-source/component-evidence/gcc-9.3.0-COPYING3"
+    },
+    {
+      "path": "review-component-evidence/gcc-9.3.0-libgfortran.h",
+      "url": "https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-9.3.0/libgfortran/libgfortran.h",
+      "bytes": 56132,
+      "sha256": "43b74f580aeddcc68a355d95669794c9d317f8458563290ba1421178edb39c68",
+      "destination": "notices-and-source/component-evidence/gcc-9.3.0-libgfortran.h"
+    },
+    {
+      "path": "review-component-evidence/gcc-9.3.0-libgcc2.c",
+      "url": "https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-9.3.0/libgcc/libgcc2.c",
+      "bytes": 52744,
+      "sha256": "60fe3340b20435eec3aec388397a022df050862183e6a3ba3b9d2ab0ee6693d8",
+      "destination": "notices-and-source/component-evidence/gcc-9.3.0-libgcc2.c"
+    }
+  ],
+  "sbom_branches": [
+    {
+      "wheel": "pydantic_core-2.46.5-cp311-cp311-win_amd64.whl",
+      "wheel_sha256": "40375c2d05acec10323e45dfe2077ac44bc74659008614af5069034e2cfc781c",
+      "purl": "pkg:cargo/wit-bindgen-rt@0.39.0",
+      "original": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "selected": "Apache-2.0",
+      "grant": {
+        "expression": "Apache-2.0",
+        "path": "notices-and-source/sbom-legal/crates/wit-bindgen-rt-0.39.0/upstream/LICENSE-APACHE",
+        "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+      }
+    },
+    {
+      "wheel": "tokenizers-0.23.2-cp310-abi3-win_amd64.whl",
+      "wheel_sha256": "2e96f5699d5249c9c64aa8412e044f727aae3a4098cf830f9901ec1afc361cde",
+      "purl": "pkg:cargo/defmt-parser@1.0.0",
+      "original": "MIT OR Apache-2.0",
+      "selected": "Apache-2.0",
+      "grant": {
+        "expression": "Apache-2.0",
+        "path": "notices-and-source/sbom-legal/crates/defmt-parser-1.0.0/upstream/LICENSE-APACHE",
+        "sha256": "8173d5c29b4f956d532781d2b86e4e30f83e6b7878dce18c919451d6ba707c90"
+      }
+    }
+  ],
+  "native_routes": [
+    {
+      "artifact_sha256": "42f6930c31dc7f50732c9ae793c2786c7b6b044195967bbdde40bb9be81c4cc0",
+      "component": "vendored-libffi",
+      "mapping": {
+        "name": "vendored-libffi",
+        "version_scope": "CFFI v2.1.1 src/c/libffi_x86_x64",
+        "license_expression": "MIT",
+        "license_paths": [
+          {
+            "path": "notices-and-source/component-evidence/cffi-v2.1.1-libffi-LICENSE",
+            "sha256": "40a537c7d74baeed3831304e92d1664ababd7ad8a3cf29f11a257c9e47145248",
+            "source_url": "https://raw.githubusercontent.com/python-cffi/cffi/v2.1.1/src/c/libffi_x86_x64/LICENSE"
+          }
+        ],
+        "relationship": "Conservatively included for the pinned Windows backend; upstream setup.py selects vendored Windows/MSVC source",
+        "backend_path": "_cffi_backend.cp311-win_amd64.pyd",
+        "fulfillment_status": "exact_notice_delivered_independent_applicability_review_pending",
+        "source_evidence": [
+          {
+            "path": "review-component-evidence/cffi-v2.1.1-libffi-LICENSE",
+            "url": "https://raw.githubusercontent.com/python-cffi/cffi/v2.1.1/src/c/libffi_x86_x64/LICENSE",
+            "bytes": 1060,
+            "sha256": "40a537c7d74baeed3831304e92d1664ababd7ad8a3cf29f11a257c9e47145248",
+            "destination": "notices-and-source/component-evidence/cffi-v2.1.1-libffi-LICENSE"
+          },
+          {
+            "path": "review-component-evidence/cffi-v2.1.1-setup.py",
+            "url": "https://raw.githubusercontent.com/python-cffi/cffi/v2.1.1/setup.py",
+            "bytes": 8199,
+            "sha256": "f4205f108b2fc7798e854724918a2790951137200980b65b6a5e652d612b07f7",
+            "destination": "notices-and-source/component-evidence/cffi-v2.1.1-setup.py"
+          }
+        ]
+      }
+    },
+    {
+      "artifact_sha256": "8b04387766efc05c627e26d24797ec0d4ed4c105ec14fa7400aa84a02db22b66",
+      "component": "gcc-fortran-runtime",
+      "requires_exception_eligibility": true,
+      "mapping": {
+        "name": "gcc-fortran-runtime",
+        "version_scope": "GCC 9.3.0 inferred from exact DLL strings; precise incorporated object set pending publisher evidence",
+        "candidate_license_expression": "GPL-3.0-or-later WITH GCC-exception-3.1",
+        "license_paths": [
+          {
+            "path": "notices-and-source/component-evidence/gcc-9.3.0-COPYING.RUNTIME",
+            "sha256": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74",
+            "source_url": "https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-9.3.0/COPYING.RUNTIME"
+          },
+          {
+            "path": "notices-and-source/component-evidence/gcc-9.3.0-COPYING3",
+            "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+            "source_url": "https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-9.3.0/COPYING3"
+          }
+        ],
+        "relationship": "Conservative compiler runtime coverage for this external DLL; separate from NumPy",
+        "fulfillment_status": "pending_exact_publisher_build_evidence",
+        "exception_eligibility": "pending",
+        "build_evidence": [],
+        "binary_evidence": {
+          "path": "bin/libopenblas.dll",
+          "sha256": "e824cf9fc22e5949807ce995a32e413a345fb97e63e6d10cfbf41aa86382193c",
+          "bytes": 51076488,
+          "strings": [
+            "GCC: (GNU) 9.3.0",
+            "GFORTRAN_",
+            "libgfortran",
+            "libgcc"
+          ]
+        },
+        "source_evidence": [
+          {
+            "path": "review-component-evidence/gcc-9.3.0-COPYING.RUNTIME",
+            "url": "https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-9.3.0/COPYING.RUNTIME",
+            "bytes": 3324,
+            "sha256": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74",
+            "destination": "notices-and-source/component-evidence/gcc-9.3.0-COPYING.RUNTIME"
+          },
+          {
+            "path": "review-component-evidence/gcc-9.3.0-COPYING3",
+            "url": "https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-9.3.0/COPYING3",
+            "bytes": 35147,
+            "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+            "destination": "notices-and-source/component-evidence/gcc-9.3.0-COPYING3"
+          },
+          {
+            "path": "review-component-evidence/gcc-9.3.0-libgfortran.h",
+            "url": "https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-9.3.0/libgfortran/libgfortran.h",
+            "bytes": 56132,
+            "sha256": "43b74f580aeddcc68a355d95669794c9d317f8458563290ba1421178edb39c68",
+            "destination": "notices-and-source/component-evidence/gcc-9.3.0-libgfortran.h"
+          },
+          {
+            "path": "review-component-evidence/gcc-9.3.0-libgcc2.c",
+            "url": "https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-9.3.0/libgcc/libgcc2.c",
+            "bytes": 52744,
+            "sha256": "60fe3340b20435eec3aec388397a022df050862183e6a3ba3b9d2ab0ee6693d8",
+            "destination": "notices-and-source/component-evidence/gcc-9.3.0-libgcc2.c"
+          }
+        ],
+        "required_input": "Publisher compilation/configuration record tying this exact archive/DLL to GCC runtime sources and eligible compilation; text alone is not exception clearance"
+      }
+    }
+  ]
+}

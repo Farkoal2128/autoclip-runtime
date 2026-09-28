@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "files": [
+    {
+      "path": "review-component-evidence/cffi-v2.1.1-libffi-LICENSE",
+      "url": "https://raw.githubusercontent.com/python-cffi/cffi/v2.1.1/src/c/libffi_x86_x64/LICENSE",
+      "bytes": 1060,
+      "sha256": "40a537c7d74baeed3831304e92d1664ababd7ad8a3cf29f11a257c9e47145248"
+    },
+    {
+      "path": "review-component-evidence/cffi-v2.1.1-setup.py",
+      "url": "https://raw.githubusercontent.com/python-cffi/cffi/v2.1.1/setup.py",
+      "bytes": 8199,
+      "sha256": "f4205f108b2fc7798e854724918a2790951137200980b65b6a5e652d612b07f7"
+    },
+    {
+      "path": "review-component-evidence/gcc-9.3.0-COPYING.RUNTIME",
+      "url": "https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-9.3.0/COPYING.RUNTIME",
+      "bytes": 3324,
+      "sha256": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74"
+    },
+    {
+      "path": "review-component-evidence/gcc-9.3.0-COPYING3",
+      "url": "https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-9.3.0/COPYING3",
+      "bytes": 35147,
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+    },
+    {
+      "path": "review-component-evidence/gcc-9.3.0-libgfortran.h",
+      "url": "https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-9.3.0/libgfortran/libgfortran.h",
+      "bytes": 56132,
+      "sha256": "43b74f580aeddcc68a355d95669794c9d317f8458563290ba1421178edb39c68"
+    },
+    {
+      "path": "review-component-evidence/gcc-9.3.0-libgcc2.c",
+      "url": "https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-9.3.0/libgcc/libgcc2.c",
+      "bytes": 52744,
+      "sha256": "60fe3340b20435eec3aec388397a022df050862183e6a3ba3b9d2ab0ee6693d8"
+    }
+  ]
+}

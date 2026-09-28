@@ -48,7 +48,8 @@ def build(base, expected_base, repo, revision, release_id, output, installer):
                'Prepare-AutoClipOfflineCache.ps1','prerequisite-terms.ps1',
                'prerequisite-terms.json','review-license-normalization.json',
                'scripts/build-source-routed-release.py','scripts/build-review-successor.py',
-               'build-native-from-source.ps1','upstream-assets.ps1')
+               'build-native-from-source.ps1','upstream-assets.ps1',
+               'review-component-corrections.json')
         source_hashes={}
         for name in names:
             data=committed(name); source_hashes[name]=sha(data)
@@ -62,8 +63,38 @@ def build(base, expected_base, repo, revision, release_id, output, installer):
             module.normalize_license_row(package,lambda name: source.read(prefix+name))
         index=json.loads(source.read('notices-and-source/sbom-component-index.json'))
         plan=json.loads(source.read('notices-and-source/sbom-component-plan.json'))
+        corrections=json.loads(committed('review-component-corrections.json'))
+        for item in corrections['files']:
+            data=committed(item['path'])
+            if len(data)!=item['bytes'] or sha(data)!=item['sha256']:
+                raise ValueError('Component evidence differs: '+item['path'])
+            changes[item['destination']]=data
+            source_hashes[item['path']]=sha(data)
+        for rule in corrections['sbom_branches']:
+            rows=[r for r in plan['components'] if (r['wheel'],r['wheel_sha256'],r['purl'])==(rule['wheel'],rule['wheel_sha256'],rule['purl'])]
+            if len(rows)!=1 or rows[0]['expressions'][0]['original']!=rule['original']:
+                raise ValueError('Reviewed SBOM identity/original differs')
+            if rule['selected'] not in rule['original'].split(' OR '):
+                raise ValueError('Selected branch is not offered')
+            if sha(source.read(rule['grant']['path']))!=rule['grant']['sha256']:
+                raise ValueError('Reviewed SBOM grant differs')
+            expression=rows[0]['expressions'][0]
+            expression.setdefault('previous_selected',expression['selected'])
+            expression.update(selected=rule['selected'],licenses=[rule['selected']],selection_status='Exact offered grant branch; independent successor disposition pending')
+            rows[0]['license_evidence']=[rule['grant']]
+        artifacts=legal['packages']+legal['external_assets']
+        for rule in corrections['native_routes']:
+            rows=[r for r in artifacts if r['sha256']==rule['artifact_sha256']]
+            if len(rows)!=1:
+                raise ValueError('Reviewed native artifact identity differs')
+            rows[0]['components']=[c for c in rows[0].get('components',[]) if c['name']!=rule['component']]+[rule['mapping']]
+        module.validate_native_component_routes(artifacts,corrections['native_routes'],lambda name: changes.get(name) or source.read(name))
         module.synchronize_sbom_index(index,plan)
         changes['notices-and-source/sbom-component-index.json']=encoded(index)
+        changes['notices-and-source/sbom-component-plan.json']=encoded(plan)
+        packet_manifest=json.loads(source.read('notices-and-source/sbom-packet-manifest.json'))
+        module.refresh_packet_manifest(packet_manifest,lambda name: changes.get(name) or source.read(name))
+        changes['notices-and-source/sbom-packet-manifest.json']=encoded(packet_manifest)
         # Preserve the exact app supplement while making the FlatBuffers route explicit.
         import io
         app=next(p for p in legal['packages'] if p['normalized_name']=='autoclip')
@@ -109,6 +140,10 @@ def build(base, expected_base, repo, revision, release_id, output, installer):
             raw=target.read(row['path'])
             if len(raw)!=row['bytes'] or sha(raw)!=row['sha256']:
                 raise ValueError('Successor archive hash mismatch: '+row['path'])
+        for row in packet_manifest['files']:
+            raw=target.read(row['path'])
+            if len(raw)!=row['bytes'] or sha(raw)!=row['sha256']:
+                raise ValueError('Successor auxiliary manifest mismatch: '+row['path'])
     result=dict(release_id=release_id,runtime_commit=revision,archive_sha256=sha(output.read_bytes()),archive_bytes=output.stat().st_size,manifest_sha256=sha(encoded(manifest)),installer_sha256=sha(installer.read_bytes()),legal_index_sha256=sha(encoded(legal)),indexed_files=len(indexed),members=len(indexed)+1)
     (output.parent/'identities.json').write_bytes(encoded(result))
     recipe_directory.cleanup()

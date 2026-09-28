@@ -189,12 +189,41 @@ def synchronize_sbom_index(index: dict, plan: dict) -> None:
     for row in index['components']:
         evidence = planned[(row['wheel'], row['wheel_sha256'], row['purl'])]
         selected = [e['selected'] for e in evidence.get('expressions', [])]
+        grants = evidence.get('license_evidence', [])
+        if isinstance(grants, list) and grants and all('expression' in grant for grant in grants):
+            supported = {grant['expression'] for grant in grants}
+            if any(expression not in supported for expression in selected):
+                raise ValueError('SBOM selected branch lacks exact grant evidence: '+row['purl'])
         if row.get('selected_expressions') != selected:
             row.setdefault('previous_selected_expressions', row.get('selected_expressions', []))
             row['selected_expressions'] = selected
         if evidence.get('license_evidence'):
             row['license_evidence'] = evidence['license_evidence']
         row['relationship'] = 'SBOM-declared; conservatively covered without asserting Windows incorporation'
+
+
+def refresh_packet_manifest(manifest: dict, read_member) -> None:
+    """Bind auxiliary hashes to the final transformed payload, not its input."""
+    for row in manifest['files']:
+        raw = read_member(row['path'])
+        row.update(bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+    manifest['file_count'] = len(manifest['files'])
+
+
+def validate_native_component_routes(artifacts: list, required: list, read_member) -> None:
+    """Reject root-only coverage and unsupported compiler-exception closure."""
+    for rule in required:
+        matches=[row for row in artifacts if row['sha256']==rule['artifact_sha256']]
+        components=[component for row in matches for component in row.get('components', []) if component['name']==rule['component']]
+        if len(components)!=1 or not components[0].get('license_paths'):
+            raise ValueError('Missing native component route: '+rule['component'])
+        component=components[0]
+        for grant in component['license_paths']:
+            if hashlib.sha256(read_member(grant['path'])).hexdigest()!=grant['sha256']:
+                raise ValueError('Native component grant hash mismatch: '+rule['component'])
+        if rule.get('requires_exception_eligibility') and component.get('fulfillment_status')=='fulfilled':
+            if component.get('exception_eligibility')!='verified' or not component.get('build_evidence'):
+                raise ValueError('Compiler exception eligibility is not verified')
 
 
 def attach_source_artifacts(inputs: Path, cache: Path, target: Path) -> None:
@@ -267,6 +296,8 @@ def attach_sbom_packet(packet: Path, target: Path, plan: dict) -> None:
     by_key = {(row["wheel"], row["wheel_sha256"], row["purl"]): row for row in components}
     synchronize_sbom_index(index, plan)
     (target / 'notices-and-source/sbom-component-index.json').write_text(json.dumps(index, indent=2) + '\n', encoding='utf-8')
+    refresh_packet_manifest(manifest, lambda name: (target/name).read_bytes())
+    (target/'notices-and-source/sbom-packet-manifest.json').write_text(json.dumps(manifest, indent=2)+'\n', encoding='utf-8')
     for row in plan["components"]:
         source = by_key[(row["wheel"], row["wheel_sha256"], row["purl"])]
         row["notice_status"] = "SBOM_notice_source_packet_staged"
