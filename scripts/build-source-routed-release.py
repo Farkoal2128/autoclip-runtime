@@ -255,6 +255,38 @@ def validate_native_component_routes(artifacts: list, required: list, read_membe
                 raise ValueError('Compiler exception eligibility is not verified')
 
 
+def validate_c5_review_overlay(artifacts: list, rule: dict, read_member) -> None:
+    """Reject stale current C5 fields or an unbound bounded-review overlay."""
+    matches = [row for row in artifacts if row.get('sha256') == rule['artifact_sha256']]
+    if (len(matches) != 1 or matches[0].get('member_path') != rule['member_path']
+            or matches[0].get('member_sha256') != rule['member_sha256']):
+        raise ValueError('C5 review artifact mismatch')
+    components = [row for row in matches[0].get('components', [])
+                  if row.get('name') == rule['component']]
+    if len(components) != 1:
+        raise ValueError('C5 review component mismatch')
+    component = components[0]
+    historical = component.get('historical_review_state', {})
+    if (historical.get('fulfillment_status') != 'pending_exact_publisher_build_evidence'
+            or historical.get('exception_eligibility') != 'pending'
+            or historical.get('build_evidence') != []
+            or not historical.get('required_input')):
+        raise ValueError('Missing historical C5 review state')
+    if (component.get('fulfillment_status') != 'exact_notices_delivered_c5_supported_bounded_review'
+            or component.get('exception_eligibility') != 'supported_by_artifact_bound_public_evidence'
+            or 'required_input' in component
+            or not component.get('optional_higher_assurance_input')):
+        raise ValueError('Stale current C5 review state')
+    evidence = {'path': rule['review_path'], 'sha256': rule['review_sha256']}
+    review = component.get('current_review', {})
+    if (component.get('build_evidence') != [evidence]
+            or review.get('path') != evidence['path']
+            or review.get('sha256') != evidence['sha256']
+            or not review.get('scope')
+            or hashlib.sha256(read_member(evidence['path'])).hexdigest() != evidence['sha256']):
+        raise ValueError('C5 review evidence mismatch')
+
+
 def validate_static_runtime_notice_routes(artifacts: list, required: list, read_member) -> None:
     """Require exact recipient notices for identified static toolchain runtimes."""
     for rule in required:

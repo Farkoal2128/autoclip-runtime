@@ -18,9 +18,11 @@ def encoded(value):
 
 
 def build(base, expected_base, repo, revision, release_id, output, installer,
-          inventory_only=True, notice_only=False):
+          inventory_only=True, notice_only=False, c5_overlay_only=False):
     if notice_only and not inventory_only:
         raise ValueError('C7 notice correction cannot refresh other review material')
+    if c5_overlay_only and (not inventory_only or notice_only):
+        raise ValueError('C8 overlay cannot combine with other review transformations')
     if output.exists() or installer.exists():
         raise ValueError('Refusing to replace immutable outputs')
     if sha(base.read_bytes()) != expected_base:
@@ -56,6 +58,8 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
                'review-component-corrections.json')
         if notice_only:
             names+=('review-static-runtime-notices.json',)
+        if c5_overlay_only:
+            names+=('review-c5-current-state.json',)
         source_hashes={}
         for name in names:
             data=committed(name); source_hashes[name]=sha(data)
@@ -164,6 +168,51 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
                  'MinGW-w64 v8.0.0 runtime and winpthreads notices under `component-evidence/`. '+
                  'See `legal-index.json` for exact DLL association and notice hashes. '+
                  'Focused independent C7 disposition remains pending.\n').encode())
+        if c5_overlay_only:
+            rule=json.loads(committed('review-c5-current-state.json'))
+            if rule.get('schema_version') != 1:
+                raise ValueError('C8 review rule schema differs')
+            matches=[row for row in legal['external_assets'] if row.get('sha256')==rule['artifact_sha256']]
+            if (len(matches)!=1 or matches[0].get('member_path')!=rule['member_path']
+                    or matches[0].get('member_sha256')!=rule['member_sha256']):
+                raise ValueError('C8 OpenBLAS identity differs')
+            components=[row for row in matches[0].get('components',[]) if row.get('name')==rule['component']]
+            if len(components)!=1:
+                raise ValueError('C8 GCC component identity differs')
+            component=components[0]
+            keys=('fulfillment_status','exception_eligibility','build_evidence','required_input')
+            if (component.get('fulfillment_status')!='pending_exact_publisher_build_evidence'
+                    or component.get('exception_eligibility')!='pending'
+                    or component.get('build_evidence')!=[]
+                    or not component.get('required_input')
+                    or 'historical_review_state' in component):
+                raise ValueError('C8 historical C5 state differs')
+            prior={key:component.pop(key) for key in keys}
+            review_bytes=committed(rule['review_source_path'])
+            if sha(review_bytes)!=rule['review_sha256'] or rule['review_path'] in source.namelist():
+                raise ValueError('C8 C5 reassessment bytes/path differ')
+            source_hashes[rule['review_source_path']]=sha(review_bytes)
+            changes[rule['review_path']]=review_bytes
+            evidence=dict(path=rule['review_path'],sha256=rule['review_sha256'])
+            component.update(
+                historical_review_state=prior,
+                fulfillment_status='exact_notices_delivered_c5_supported_bounded_review',
+                exception_eligibility='supported_by_artifact_bound_public_evidence',
+                build_evidence=[evidence],
+                optional_higher_assurance_input='Exact private publisher build logs or maintainer attestation; optional for bounded C5 review',
+                current_review=dict(**evidence,scope='Bounded engineering/compliance review for the exact external OpenBLAS DLL; no professional legal or publication clearance'))
+            legal.update(runtime_commit=revision,candidate_source_state='committed_runtime_source',
+                         native_build=dict(manifest['native_build']))
+            changes['notices-and-source/legal-index.json']=encoded(legal)
+            module.validate_c5_review_overlay(legal['external_assets'],rule,
+                                              lambda name: changes.get(name) or source.read(name))
+            changes['notices-and-source/MANIFEST.md']=(
+                source.read('notices-and-source/MANIFEST.md')+
+                ('\n\n## '+release_id+' C5 current-review metadata\n\n'+
+                 'The exact external OpenBLAS DLL GCC/Fortran row in `legal-index.json` '+
+                 'retains its earlier pending state as historical metadata and points to '+
+                 '`component-evidence/cr09-c5-public-evidence-reassessment.md` for the '+
+                 'current bounded C5 disposition. No publication authority is asserted.\n').encode())
         provenance=json.loads(source.read('notices-and-source/build-provenance.json'))
         provenance.update(runtime_commit=revision,source_state='committed_runtime_source',construction_base_archive_sha256=expected_base,committed_source_sha256=source_hashes)
         if inventory_only:
@@ -177,6 +226,12 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
                     'only C7 notices, the external OpenBLAS legal mapping and dependent metadata transformed; '
                     'focused independent disposition pending')
                 provenance['c7_notice_rule_sha256']=sha(committed('review-static-runtime-notices.json'))
+            if c5_overlay_only:
+                provenance['reviewed_material_carry_forward']['scope']=(
+                    'Unchanged C7 notices, SBOM, source, app, native and terms bytes carried forward; '
+                    'only current C5 GCC-row review metadata and dependent identities transformed; '
+                    'focused independent C8 disposition pending')
+                provenance['c8_review_rule_sha256']=sha(committed('review-c5-current-state.json'))
         changes['notices-and-source/build-provenance.json']=encoded(provenance)
         if not inventory_only:
             changes['notices-and-source/MANIFEST.md']=source.read('notices-and-source/MANIFEST.md')+f'\n\n## {release_id}\n\nCurrent runtime source `{revision}`. Current source snapshots are under build-provenance/current. Earlier snapshots retain historical scope. Review metadata and prerequisite consent corrected; independent final disposition pending.\n'.encode()
@@ -217,6 +272,10 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
             module.validate_static_runtime_notice_routes(
                 json.loads(target.read('notices-and-source/legal-index.json'))['external_assets'],
                 [rule], target.read)
+        if c5_overlay_only:
+            module.validate_c5_review_overlay(
+                json.loads(target.read('notices-and-source/legal-index.json'))['external_assets'],
+                rule, target.read)
         for row in packet_manifest['files']:
             raw=target.read(row['path'])
             if len(raw)!=row['bytes'] or sha(raw)!=row['sha256']:
@@ -234,7 +293,9 @@ if __name__=='__main__':
     for name in ('expected-base','revision','release-id'):p.add_argument('--'+name,required=True)
     p.add_argument('--refresh-review-material',action='store_true',help='Explicitly transform legal/SBOM material; default preserves reviewed bytes')
     p.add_argument('--apply-c7-notices',action='store_true',help='Apply only the pinned MinGW-w64 notice correction')
+    p.add_argument('--apply-c8-c5-overlay',action='store_true',help='Correct only the current C5 GCC-row review metadata')
     a=p.parse_args()
     print(json.dumps(build(a.base,a.expected_base,a.repo,a.revision,a.release_id,a.output,a.installer,
                           inventory_only=not a.refresh_review_material,
-                          notice_only=a.apply_c7_notices),indent=2))
+                          notice_only=a.apply_c7_notices,
+                          c5_overlay_only=a.apply_c8_c5_overlay),indent=2))
