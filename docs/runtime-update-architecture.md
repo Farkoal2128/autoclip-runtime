@@ -101,6 +101,15 @@ A future content-addressed wheel store or binary patch scheme needs its own
 justification; it is not part of this baseline architecture.
 # Source-build profile selection
 
+Current correction successors derive `distribution-inventory.json` from the final
+operative manifest after transformations and validate equality after archive
+creation. Preserve exact external filename/kind/size/hash and all 74 publisher
+identities. OpenBLAS and VC runtime apply to CPU/default and NVIDIA; cuBLAS is
+optional NVIDIA-only. Unselected historical cuDNN is not a current input.
+An inventory-only successor preserves reviewed legal/SBOM bytes and their original
+source attribution; provenance records the exact carry-forward basis. It assigns
+new immutable archive/manifest/standalone pins without changing installed behavior.
+
 For a new source-built runtime, the updater retains the active runtime's
 NVIDIA profile when its verified native build receipt reports `profile=nvidia`
 and the selected installer supports `-InstallNvidiaGpu`. A user can request

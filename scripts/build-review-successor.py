@@ -17,7 +17,7 @@ def encoded(value):
     return (json.dumps(value, indent=2) + '\n').encode()
 
 
-def build(base, expected_base, repo, revision, release_id, output, installer):
+def build(base, expected_base, repo, revision, release_id, output, installer, inventory_only=True):
     if output.exists() or installer.exists():
         raise ValueError('Refusing to replace immutable outputs')
     if sha(base.read_bytes()) != expected_base:
@@ -57,60 +57,80 @@ def build(base, expected_base, repo, revision, release_id, output, installer):
                 changes[name]=data
             changes['notices-and-source/build-provenance/current/'+name]=data
         manifest['native_build'].update(runtime_commit=revision,candidate_source_state='committed_runtime_source')
-        legal.update(runtime_commit=revision,candidate_source_state='committed_runtime_source',native_build=dict(manifest['native_build']))
-        for package in legal['packages']:
-            prefix='notices-and-source/wheel-notices/'+package['filename']+'/'
-            module.normalize_license_row(package,lambda name: source.read(prefix+name))
-        index=json.loads(source.read('notices-and-source/sbom-component-index.json'))
-        plan=json.loads(source.read('notices-and-source/sbom-component-plan.json'))
-        corrections=json.loads(committed('review-component-corrections.json'))
-        for item in corrections['files']:
-            data=committed(item['path'])
-            if len(data)!=item['bytes'] or sha(data)!=item['sha256']:
-                raise ValueError('Component evidence differs: '+item['path'])
-            changes[item['destination']]=data
-            source_hashes[item['path']]=sha(data)
-        for rule in corrections['sbom_branches']:
-            rows=[r for r in plan['components'] if (r['wheel'],r['wheel_sha256'],r['purl'])==(rule['wheel'],rule['wheel_sha256'],rule['purl'])]
-            if len(rows)!=1 or rows[0]['expressions'][0]['original']!=rule['original']:
-                raise ValueError('Reviewed SBOM identity/original differs')
-            if rule['selected'] not in rule['original'].split(' OR '):
-                raise ValueError('Selected branch is not offered')
-            if sha(source.read(rule['grant']['path']))!=rule['grant']['sha256']:
-                raise ValueError('Reviewed SBOM grant differs')
-            expression=rows[0]['expressions'][0]
-            expression.setdefault('previous_selected',expression['selected'])
-            expression.update(selected=rule['selected'],licenses=[rule['selected']],selection_status='Exact offered grant branch; independent successor disposition pending')
-            rows[0]['license_evidence']=[rule['grant']]
-        artifacts=legal['packages']+legal['external_assets']
-        for rule in corrections['native_routes']:
-            rows=[r for r in artifacts if r['sha256']==rule['artifact_sha256']]
-            if len(rows)!=1:
-                raise ValueError('Reviewed native artifact identity differs')
-            rows[0]['components']=[c for c in rows[0].get('components',[]) if c['name']!=rule['component']]+[rule['mapping']]
-        module.validate_native_component_routes(artifacts,corrections['native_routes'],lambda name: changes.get(name) or source.read(name))
-        module.synchronize_sbom_index(index,plan)
-        changes['notices-and-source/sbom-component-index.json']=encoded(index)
-        changes['notices-and-source/sbom-component-plan.json']=encoded(plan)
         packet_manifest=json.loads(source.read('notices-and-source/sbom-packet-manifest.json'))
-        module.refresh_packet_manifest(packet_manifest,lambda name: changes.get(name) or source.read(name))
-        changes['notices-and-source/sbom-packet-manifest.json']=encoded(packet_manifest)
-        # Preserve the exact app supplement while making the FlatBuffers route explicit.
-        import io
-        app=next(p for p in legal['packages'] if p['normalized_name']=='autoclip')
-        with zipfile.ZipFile(io.BytesIO(source.read('wheelhouse/'+app['filename']))) as wheel:
-            supplement=wheel.read('autoclip/assets/licenses/python-runtime-notices.txt')
-        if b'===== flatbuffers@25.12.19 =====' not in supplement or b'cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30' not in supplement:
-            raise ValueError('Exact FlatBuffers supplement is absent')
-        location='notices-and-source/supplements/python-runtime-notices.txt'
-        changes[location]=supplement
-        flat=next(p for p in legal['packages'] if p['normalized_name']=='flatbuffers')
-        flat['supplement_evidence']=dict(path=location,sha256=sha(supplement),component='flatbuffers@25.12.19',license_expression='Apache-2.0',scope='Exact delivered supplement; independent attribution/applicability review pending')
-        changes['notices-and-source/legal-index.json']=encoded(legal)
+        if inventory_only:
+            corrections=json.loads(committed('review-component-corrections.json'))
+            for item in corrections['files']:
+                data=committed(item['path'])
+                if len(data)!=item['bytes'] or sha(data)!=item['sha256'] or data!=source.read(item['destination']):
+                    raise ValueError('Inventory-only successor changes reviewed component evidence')
+                source_hashes[item['path']]=sha(data)
+            module.validate_native_component_routes(legal['packages']+legal['external_assets'],corrections['native_routes'],source.read)
+            module.synchronize_sbom_index(json.loads(source.read('notices-and-source/sbom-component-index.json')),json.loads(source.read('notices-and-source/sbom-component-plan.json')))
+        if not inventory_only:
+            legal.update(runtime_commit=revision,candidate_source_state='committed_runtime_source',native_build=dict(manifest['native_build']))
+            for package in legal['packages']:
+                prefix='notices-and-source/wheel-notices/'+package['filename']+'/'
+                module.normalize_license_row(package,lambda name: source.read(prefix+name))
+            index=json.loads(source.read('notices-and-source/sbom-component-index.json'))
+            plan=json.loads(source.read('notices-and-source/sbom-component-plan.json'))
+            corrections=json.loads(committed('review-component-corrections.json'))
+            for item in corrections['files']:
+                data=committed(item['path'])
+                if len(data)!=item['bytes'] or sha(data)!=item['sha256']:
+                    raise ValueError('Component evidence differs: '+item['path'])
+                changes[item['destination']]=data
+                source_hashes[item['path']]=sha(data)
+            for rule in corrections['sbom_branches']:
+                rows=[r for r in plan['components'] if (r['wheel'],r['wheel_sha256'],r['purl'])==(rule['wheel'],rule['wheel_sha256'],rule['purl'])]
+                if len(rows)!=1 or rows[0]['expressions'][0]['original']!=rule['original']:
+                    raise ValueError('Reviewed SBOM identity/original differs')
+                if rule['selected'] not in rule['original'].split(' OR '):
+                    raise ValueError('Selected branch is not offered')
+                if sha(source.read(rule['grant']['path']))!=rule['grant']['sha256']:
+                    raise ValueError('Reviewed SBOM grant differs')
+                expression=rows[0]['expressions'][0]
+                expression.setdefault('previous_selected',expression['selected'])
+                expression.update(selected=rule['selected'],licenses=[rule['selected']],selection_status='Exact offered grant branch; independent successor disposition pending')
+                rows[0]['license_evidence']=[rule['grant']]
+            artifacts=legal['packages']+legal['external_assets']
+            for rule in corrections['native_routes']:
+                rows=[r for r in artifacts if r['sha256']==rule['artifact_sha256']]
+                if len(rows)!=1:
+                    raise ValueError('Reviewed native artifact identity differs')
+                rows[0]['components']=[c for c in rows[0].get('components',[]) if c['name']!=rule['component']]+[rule['mapping']]
+            module.validate_native_component_routes(artifacts,corrections['native_routes'],lambda name: changes.get(name) or source.read(name))
+            module.synchronize_sbom_index(index,plan)
+            changes['notices-and-source/sbom-component-index.json']=encoded(index)
+            changes['notices-and-source/sbom-component-plan.json']=encoded(plan)
+            packet_manifest=json.loads(source.read('notices-and-source/sbom-packet-manifest.json'))
+            module.refresh_packet_manifest(packet_manifest,lambda name: changes.get(name) or source.read(name))
+            changes['notices-and-source/sbom-packet-manifest.json']=encoded(packet_manifest)
+            # Preserve the exact app supplement while making the FlatBuffers route explicit.
+            import io
+            app=next(p for p in legal['packages'] if p['normalized_name']=='autoclip')
+            with zipfile.ZipFile(io.BytesIO(source.read('wheelhouse/'+app['filename']))) as wheel:
+                supplement=wheel.read('autoclip/assets/licenses/python-runtime-notices.txt')
+            if b'===== flatbuffers@25.12.19 =====' not in supplement or b'cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30' not in supplement:
+                raise ValueError('Exact FlatBuffers supplement is absent')
+            location='notices-and-source/supplements/python-runtime-notices.txt'
+            changes[location]=supplement
+            flat=next(p for p in legal['packages'] if p['normalized_name']=='flatbuffers')
+            flat['supplement_evidence']=dict(path=location,sha256=sha(supplement),component='flatbuffers@25.12.19',license_expression='Apache-2.0',scope='Exact delivered supplement; independent attribution/applicability review pending')
+            changes['notices-and-source/legal-index.json']=encoded(legal)
         provenance=json.loads(source.read('notices-and-source/build-provenance.json'))
         provenance.update(runtime_commit=revision,source_state='committed_runtime_source',construction_base_archive_sha256=expected_base,committed_source_sha256=source_hashes)
+        if inventory_only:
+            provenance['reviewed_material_carry_forward']=dict(
+                base_runtime_commit=legal['runtime_commit'],
+                legal_index_sha256=sha(source.read('notices-and-source/legal-index.json')),
+                scope='Exact unchanged reviewed legal/SBOM bytes; original source attribution retained; no new clearance')
         changes['notices-and-source/build-provenance.json']=encoded(provenance)
-        changes['notices-and-source/MANIFEST.md']=source.read('notices-and-source/MANIFEST.md')+f'\n\n## {release_id}\n\nCurrent runtime source `{revision}`. Current source snapshots are under build-provenance/current. Earlier snapshots retain historical scope. Review metadata and prerequisite consent corrected; independent final disposition pending.\n'.encode()
+        if not inventory_only:
+            changes['notices-and-source/MANIFEST.md']=source.read('notices-and-source/MANIFEST.md')+f'\n\n## {release_id}\n\nCurrent runtime source `{revision}`. Current source snapshots are under build-provenance/current. Earlier snapshots retain historical scope. Review metadata and prerequisite consent corrected; independent final disposition pending.\n'.encode()
+        apps=[n.split('/')[-1] for n in source.namelist() if n.startswith('wheelhouse/') and n.endswith('.whl')]
+        inventory=module.distribution_inventory(manifest, apps)
+        changes['distribution-inventory.json']=encoded(inventory)
         indexed={r['path']:r for r in manifest['files']}
         for name,data in changes.items():
             indexed[name]=dict(path=name,bytes=len(data),sha256=sha(data))
@@ -140,11 +160,13 @@ def build(base, expected_base, repo, revision, release_id, output, installer):
             raw=target.read(row['path'])
             if len(raw)!=row['bytes'] or sha(raw)!=row['sha256']:
                 raise ValueError('Successor archive hash mismatch: '+row['path'])
+        module.validate_distribution_inventory(json.loads(target.read('distribution-inventory.json')),json.loads(target.read('release-manifest.json')),apps)
         for row in packet_manifest['files']:
             raw=target.read(row['path'])
             if len(raw)!=row['bytes'] or sha(raw)!=row['sha256']:
                 raise ValueError('Successor auxiliary manifest mismatch: '+row['path'])
-    result=dict(release_id=release_id,runtime_commit=revision,archive_sha256=sha(output.read_bytes()),archive_bytes=output.stat().st_size,manifest_sha256=sha(encoded(manifest)),installer_sha256=sha(installer.read_bytes()),legal_index_sha256=sha(encoded(legal)),indexed_files=len(indexed),members=len(indexed)+1)
+    with zipfile.ZipFile(output) as target:
+        result=dict(release_id=release_id,runtime_commit=revision,archive_sha256=sha(output.read_bytes()),archive_bytes=output.stat().st_size,manifest_sha256=sha(encoded(manifest)),installer_sha256=sha(installer.read_bytes()),legal_index_sha256=sha(target.read('notices-and-source/legal-index.json')),distribution_inventory_sha256=sha(target.read('distribution-inventory.json')),provenance_sha256=sha(target.read('notices-and-source/build-provenance.json')),indexed_files=len(indexed),members=len(indexed)+1)
     (output.parent/'identities.json').write_bytes(encoded(result))
     recipe_directory.cleanup()
     return result
@@ -154,5 +176,6 @@ if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)
     for name in ('base','repo','output','installer'):p.add_argument('--'+name,type=Path,required=True)
     for name in ('expected-base','revision','release-id'):p.add_argument('--'+name,required=True)
+    p.add_argument('--refresh-review-material',action='store_true',help='Explicitly transform legal/SBOM material; default preserves reviewed bytes')
     a=p.parse_args()
-    print(json.dumps(build(a.base,a.expected_base,a.repo,a.revision,a.release_id,a.output,a.installer),indent=2))
+    print(json.dumps(build(a.base,a.expected_base,a.repo,a.revision,a.release_id,a.output,a.installer,inventory_only=not a.refresh_review_material),indent=2))

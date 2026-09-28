@@ -15,6 +15,35 @@ import zipfile
 from pathlib import Path
 
 
+def distribution_inventory(manifest, apps):
+    """Describe final operative inputs, preserving exact artifact identities."""
+    publisher = manifest['publisher_wheels']
+    if len(publisher) != 74 or len({r['filename'] for r in publisher}) != 74:
+        raise ValueError('Expected exactly 74 unique publisher wheels')
+    assets = []
+    for row in manifest['external_assets']:
+        if row['kind'] in ('openblas_archive', 'microsoft_vc_redist_x64'):
+            gpu = False
+        elif row['kind'] == 'python_wheel' and row['filename'].startswith('nvidia_cublas_'):
+            gpu = True
+        else:
+            raise ValueError('Unsupported current external asset: '+row['filename'])
+        assets.append(dict(row, profiles=['nvidia'] if gpu else ['cpu', 'nvidia'],
+                           cpu_default=not gpu, optional_nvidia=gpu))
+    if len(assets) != 3 or len({r['filename'] for r in assets}) != 3:
+        raise ValueError('Expected three unique selected external assets')
+    return dict(schema_version=1, autoclip_wheels=sorted(apps),
+                publisher_wheel_count=len(publisher),
+                publisher_wheels=[r['filename'] for r in publisher],
+                publisher_wheel_identities=[dict(r) for r in publisher],
+                native_build=dict(manifest.get('native_build', {})), external_assets=assets)
+
+
+def validate_distribution_inventory(inventory, manifest, apps):
+    if inventory != distribution_inventory(manifest, apps):
+        raise ValueError('Current distribution inventory differs from final selected manifest')
+
+
 
 EXTERNAL_ASSETS = [
     {
