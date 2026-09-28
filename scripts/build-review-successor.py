@@ -17,7 +17,10 @@ def encoded(value):
     return (json.dumps(value, indent=2) + '\n').encode()
 
 
-def build(base, expected_base, repo, revision, release_id, output, installer, inventory_only=True):
+def build(base, expected_base, repo, revision, release_id, output, installer,
+          inventory_only=True, notice_only=False):
+    if notice_only and not inventory_only:
+        raise ValueError('C7 notice correction cannot refresh other review material')
     if output.exists() or installer.exists():
         raise ValueError('Refusing to replace immutable outputs')
     if sha(base.read_bytes()) != expected_base:
@@ -43,6 +46,7 @@ def build(base, expected_base, repo, revision, release_id, output, installer, in
             if len(raw)!=row['bytes'] or sha(raw)!=row['sha256']:
                 raise ValueError('Base manifest mismatch: '+row['path'])
         legal=json.loads(source.read('notices-and-source/legal-index.json'))
+        base_legal_runtime_commit=legal['runtime_commit']
         changes={}
         names=('install-source-build.ps1','update.ps1','cuda-prerequisites.ps1',
                'Prepare-AutoClipOfflineCache.ps1','prerequisite-terms.ps1',
@@ -50,6 +54,8 @@ def build(base, expected_base, repo, revision, release_id, output, installer, in
                'scripts/build-source-routed-release.py','scripts/build-review-successor.py',
                'build-native-from-source.ps1','upstream-assets.ps1',
                'review-component-corrections.json')
+        if notice_only:
+            names+=('review-static-runtime-notices.json',)
         source_hashes={}
         for name in names:
             data=committed(name); source_hashes[name]=sha(data)
@@ -118,13 +124,59 @@ def build(base, expected_base, repo, revision, release_id, output, installer, in
             flat=next(p for p in legal['packages'] if p['normalized_name']=='flatbuffers')
             flat['supplement_evidence']=dict(path=location,sha256=sha(supplement),component='flatbuffers@25.12.19',license_expression='Apache-2.0',scope='Exact delivered supplement; independent attribution/applicability review pending')
             changes['notices-and-source/legal-index.json']=encoded(legal)
+        if notice_only:
+            rule=json.loads(committed('review-static-runtime-notices.json'))
+            if rule.get('schema_version') != 1 or len(rule.get('notices', [])) != 2:
+                raise ValueError('C7 notice rule differs from reviewed scope')
+            matches=[row for row in legal['external_assets'] if row.get('sha256') == rule['artifact_sha256']]
+            if (len(matches) != 1 or matches[0].get('member_path') != rule['member_path']
+                    or matches[0].get('member_sha256') != rule['member_sha256']):
+                raise ValueError('C7 external OpenBLAS identity differs')
+            external=matches[0]
+            if {row['component'] for row in rule['notices']} != {'mingw-w64-runtime','winpthreads'}:
+                raise ValueError('C7 component set differs from reviewed scope')
+            for notice in rule['notices']:
+                data=committed(notice['source_path'])
+                if len(data) != notice['bytes'] or sha(data) != notice['sha256']:
+                    raise ValueError('C7 notice differs from pinned upstream bytes: '+notice['component'])
+                if notice['path'] in source.namelist() or notice['path'] in changes:
+                    raise ValueError('C7 notice would overwrite an existing member: '+notice['path'])
+                source_hashes[notice['source_path']]=sha(data)
+                changes[notice['path']]=data
+                external.setdefault('components', []).append(dict(
+                    name=notice['component'], version_scope=notice['version_scope'],
+                    binary_path=rule['member_path'], binary_sha256=rule['member_sha256'],
+                    license_paths=[dict(path=notice['path'],sha256=notice['sha256'])],
+                    source_evidence=dict(path=notice['source_path'],url=notice['url'],
+                                         upstream_path=notice['upstream_path'],
+                                         bytes=notice['bytes'],sha256=notice['sha256']),
+                    relationship='Conservatively mapped to the exact external OpenBLAS DLL; separate from OpenBLAS BSD and GCC runtime texts',
+                    fulfillment_status='exact_notice_delivered_focused_independent_review_pending'))
+            legal.update(runtime_commit=revision,candidate_source_state='committed_runtime_source',
+                         native_build=dict(manifest['native_build']))
+            changes['notices-and-source/legal-index.json']=encoded(legal)
+            module.validate_static_runtime_notice_routes(
+                legal['external_assets'],[rule],lambda name: changes.get(name) or source.read(name))
+            changes['notices-and-source/MANIFEST.md']=(
+                source.read('notices-and-source/MANIFEST.md')+
+                ('\n\n## '+release_id+' external OpenBLAS static runtime notices\n\n'+
+                 'The external `OpenBLAS-0.3.30-x64.zip!/bin/libopenblas.dll` has separate '+
+                 'MinGW-w64 v8.0.0 runtime and winpthreads notices under `component-evidence/`. '+
+                 'See `legal-index.json` for exact DLL association and notice hashes. '+
+                 'Focused independent C7 disposition remains pending.\n').encode())
         provenance=json.loads(source.read('notices-and-source/build-provenance.json'))
         provenance.update(runtime_commit=revision,source_state='committed_runtime_source',construction_base_archive_sha256=expected_base,committed_source_sha256=source_hashes)
         if inventory_only:
             provenance['reviewed_material_carry_forward']=dict(
-                base_runtime_commit=legal['runtime_commit'],
+                base_runtime_commit=base_legal_runtime_commit,
                 legal_index_sha256=sha(source.read('notices-and-source/legal-index.json')),
                 scope='Exact unchanged reviewed legal/SBOM bytes; original source attribution retained; no new clearance')
+            if notice_only:
+                provenance['reviewed_material_carry_forward']['scope']=(
+                    'Unchanged SBOM, source, app, native and terms bytes carried forward; '
+                    'only C7 notices, the external OpenBLAS legal mapping and dependent metadata transformed; '
+                    'focused independent disposition pending')
+                provenance['c7_notice_rule_sha256']=sha(committed('review-static-runtime-notices.json'))
         changes['notices-and-source/build-provenance.json']=encoded(provenance)
         if not inventory_only:
             changes['notices-and-source/MANIFEST.md']=source.read('notices-and-source/MANIFEST.md')+f'\n\n## {release_id}\n\nCurrent runtime source `{revision}`. Current source snapshots are under build-provenance/current. Earlier snapshots retain historical scope. Review metadata and prerequisite consent corrected; independent final disposition pending.\n'.encode()
@@ -161,6 +213,10 @@ def build(base, expected_base, repo, revision, release_id, output, installer, in
             if len(raw)!=row['bytes'] or sha(raw)!=row['sha256']:
                 raise ValueError('Successor archive hash mismatch: '+row['path'])
         module.validate_distribution_inventory(json.loads(target.read('distribution-inventory.json')),json.loads(target.read('release-manifest.json')),apps)
+        if notice_only:
+            module.validate_static_runtime_notice_routes(
+                json.loads(target.read('notices-and-source/legal-index.json'))['external_assets'],
+                [rule], target.read)
         for row in packet_manifest['files']:
             raw=target.read(row['path'])
             if len(raw)!=row['bytes'] or sha(raw)!=row['sha256']:
@@ -177,5 +233,8 @@ if __name__=='__main__':
     for name in ('base','repo','output','installer'):p.add_argument('--'+name,type=Path,required=True)
     for name in ('expected-base','revision','release-id'):p.add_argument('--'+name,required=True)
     p.add_argument('--refresh-review-material',action='store_true',help='Explicitly transform legal/SBOM material; default preserves reviewed bytes')
+    p.add_argument('--apply-c7-notices',action='store_true',help='Apply only the pinned MinGW-w64 notice correction')
     a=p.parse_args()
-    print(json.dumps(build(a.base,a.expected_base,a.repo,a.revision,a.release_id,a.output,a.installer,inventory_only=not a.refresh_review_material),indent=2))
+    print(json.dumps(build(a.base,a.expected_base,a.repo,a.revision,a.release_id,a.output,a.installer,
+                          inventory_only=not a.refresh_review_material,
+                          notice_only=a.apply_c7_notices),indent=2))

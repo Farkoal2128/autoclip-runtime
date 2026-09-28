@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "artifact_sha256": "8b04387766efc05c627e26d24797ec0d4ed4c105ec14fa7400aa84a02db22b66",
+  "member_path": "bin/libopenblas.dll",
+  "member_sha256": "e824cf9fc22e5949807ce995a32e413a345fb97e63e6d10cfbf41aa86382193c",
+  "notices": [
+    {
+      "component": "mingw-w64-runtime",
+      "version_scope": "MinGW-w64 v8.0.0 static runtime material identified in the exact external OpenBLAS DLL",
+      "upstream_path": "COPYING.MinGW-w64-runtime/COPYING.MinGW-w64-runtime.txt",
+      "source_path": "review-component-evidence/mingw-w64-v8.0.0-COPYING.MinGW-w64-runtime.txt",
+      "path": "notices-and-source/component-evidence/mingw-w64-v8.0.0-COPYING.MinGW-w64-runtime.txt",
+      "url": "https://raw.githubusercontent.com/mingw-w64/mingw-w64/v8.0.0/COPYING.MinGW-w64-runtime/COPYING.MinGW-w64-runtime.txt",
+      "bytes": 10936,
+      "sha256": "e9b2dc02451ea29092a1f25fa0f3c07207ed421f1807dffb0c4e6dce69dee7bd"
+    },
+    {
+      "component": "winpthreads",
+      "version_scope": "MinGW-w64 v8.0.0 winpthreads material identified in the exact external OpenBLAS DLL",
+      "upstream_path": "mingw-w64-libraries/winpthreads/COPYING",
+      "source_path": "review-component-evidence/mingw-w64-v8.0.0-winpthreads-COPYING",
+      "path": "notices-and-source/component-evidence/mingw-w64-v8.0.0-winpthreads-COPYING",
+      "url": "https://raw.githubusercontent.com/mingw-w64/mingw-w64/v8.0.0/mingw-w64-libraries/winpthreads/COPYING",
+      "bytes": 2883,
+      "sha256": "63263614cdd29f2f93cba85e992f041b31f9fc7b4033692f31269489a8a1b177"
+    }
+  ]
+}

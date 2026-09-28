@@ -255,6 +255,33 @@ def validate_native_component_routes(artifacts: list, required: list, read_membe
                 raise ValueError('Compiler exception eligibility is not verified')
 
 
+def validate_static_runtime_notice_routes(artifacts: list, required: list, read_member) -> None:
+    """Require exact recipient notices for identified static toolchain runtimes."""
+    for rule in required:
+        matches = [row for row in artifacts if row.get('sha256') == rule['artifact_sha256']]
+        if (len(matches) != 1 or matches[0].get('member_path') != rule['member_path']
+                or matches[0].get('member_sha256') != rule['member_sha256']):
+            raise ValueError('Static runtime notice artifact mismatch')
+        for notice in rule['notices']:
+            components = [item for item in matches[0].get('components', [])
+                          if item.get('name') == notice['component']]
+            if len(components) != 1:
+                raise ValueError('Missing static runtime notice route: ' + notice['component'])
+            component = components[0]
+            if (component.get('binary_path') != rule['member_path']
+                    or component.get('binary_sha256') != rule['member_sha256']):
+                raise ValueError('Static runtime notice binary mismatch: ' + notice['component'])
+            if component.get('license_paths') != [
+                    {'path': notice['path'], 'sha256': notice['sha256']}]:
+                raise ValueError('Missing static runtime notice route: ' + notice['component'])
+            try:
+                raw = read_member(notice['path'])
+            except (KeyError, FileNotFoundError) as exc:
+                raise ValueError('Missing static runtime notice bytes: ' + notice['component']) from exc
+            if hashlib.sha256(raw).hexdigest() != notice['sha256']:
+                raise ValueError('Static runtime notice hash mismatch: ' + notice['component'])
+
+
 def attach_source_artifacts(inputs: Path, cache: Path, target: Path) -> None:
     """Copy only pinned, byte-verified upstream source archives."""
     specification = json.loads(inputs.read_text(encoding="utf-8"))
