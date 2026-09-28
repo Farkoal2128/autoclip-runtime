@@ -28,6 +28,8 @@ try {
     $rejected=$false
     try { & (Join-Path $repo 'Prepare-AutoClipOfflineCache.ps1') -ManifestPath $manifest -CacheRoot (Join-Path $root 'cublas') -InstallNvidiaGpu -DownloadScript {param($url,$path) $script:downloads++; [IO.File]::WriteAllBytes($path,[byte[]](1,2,3))} } catch { $rejected=$_.Exception.Message -eq 'Recipient declined prerequisite terms.' }
     if (-not $rejected -or $downloads -ne 0) { throw 'Declined cuBLAS consent must prevent publisher wheel acquisition.' }
+    $vcLaunch=$ast.Find({param($n) $n -is [Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Start-Process' -and $n.Extent.Text.Contains('$microsoft')},$true)
+    if (-not $vcLaunch -or $vcLaunch.Extent.Text -match "'/quiet'|-WindowStyle Hidden") { throw 'Microsoft native agreement UI must remain visible, without quiet installation.' }
     Write-Output 'Declined CUDA and Microsoft terms prevented all installer/acquisition side effects.'
 } finally {
     if ($oldPath) { $env:Path=$oldPath }

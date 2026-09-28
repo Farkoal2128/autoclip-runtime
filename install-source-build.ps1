@@ -286,7 +286,7 @@ try {
         Get-PinnedUpstreamAsset -Uri ([string]$asset.url) -Sha256 ([string]$asset.sha256) -Size ([long]$asset.bytes) -Destination $destination | Out-Null
     }
     if ($microsoft) {
-        $process = Start-Process -FilePath $microsoft -ArgumentList '/install','/norestart' -Wait -PassThru -Verb RunAs -WindowStyle Hidden
+        $process = Start-Process -FilePath $microsoft -ArgumentList '/install','/norestart' -Wait -PassThru -Verb RunAs -WindowStyle Normal
         if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
             throw "Microsoft Visual C++ Redistributable installation failed: $($process.ExitCode)"
         }
