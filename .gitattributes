@@ -1,3 +1,4 @@
 app-release.json text eol=lf
 .github/tests/fixtures/distro-LICENSE -text -diff
-review-component-evidence/* -text
+review-component-evidence/* -text -diff
+review-component-evidence/manifest.json text eol=lf
