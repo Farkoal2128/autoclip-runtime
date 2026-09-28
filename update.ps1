@@ -7,6 +7,7 @@ param(
     [string]$MsysBash,
     [string]$CudaRoot,
     [switch]$InstallNvidiaGpu,
+    [switch]$CpuOnly,
     [string]$ShortcutPath,
     [string]$PreviousReleaseId,
     [switch]$Rollback,
@@ -14,6 +15,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if ($InstallNvidiaGpu -and $CpuOnly) {
+    throw 'Choose either -InstallNvidiaGpu or -CpuOnly.'
+}
 if (-not $IsWindows -and $PSVersionTable.PSEdition -eq 'Core') {
     throw 'This updater supports Windows x64 only.'
 }
@@ -361,6 +365,23 @@ try {
         manifest_sha256 = [string]$info.ManifestSha256
     }
     $targetRoot = Get-ReleaseRoot $releaseId
+    $preserveNvidiaGpu = $false
+    if (-not $CpuOnly -and $state -and $state.current) {
+        $activeReceiptPath = Join-Path (Get-ReleaseRoot ([string]$state.current.release_id)) 'native-build-receipt.json'
+        if (Test-Path -LiteralPath $activeReceiptPath -PathType Leaf) {
+            $activeReceipt = Get-Content -LiteralPath $activeReceiptPath -Raw | ConvertFrom-Json
+            $preserveNvidiaGpu = [string]$activeReceipt.profile -eq 'nvidia'
+        }
+    }
+    $wantNvidiaGpu = [bool]($InstallNvidiaGpu -or $preserveNvidiaGpu)
+    $targetReceiptPath = Join-Path $targetRoot 'native-build-receipt.json'
+    if (Test-Path -LiteralPath $targetReceiptPath -PathType Leaf) {
+        $targetReceipt = Get-Content -LiteralPath $targetReceiptPath -Raw | ConvertFrom-Json
+        $expectedProfile = if ($wantNvidiaGpu) { 'nvidia' } else { 'cpu' }
+        if ([string]$targetReceipt.profile -ne $expectedProfile) {
+            throw "The existing source-build runtime has profile $($targetReceipt.profile), but this update requires $expectedProfile. Use a distinct release identity for a different profile."
+        }
+    }
     if ($state -and $state.current.release_id -eq $releaseId -and
         $state.current.archive_sha256 -eq $release.archive_sha256) {
         try {
@@ -390,7 +411,13 @@ try {
         if ($NativeBuildRoot) { $arguments.NativeBuildRoot = $NativeBuildRoot }
         if ($MsysBash) { $arguments.MsysBash = $MsysBash }
         if ($CudaRoot) { $arguments.CudaRoot = $CudaRoot }
-        if ($InstallNvidiaGpu) { $arguments.InstallNvidiaGpu = $true }
+        if ($wantNvidiaGpu) {
+            if (-not (Get-Command -Name $InstallerPath).Parameters.ContainsKey('InstallNvidiaGpu')) {
+                if ($InstallNvidiaGpu) { throw 'The selected installer does not support -InstallNvidiaGpu.' }
+                throw 'The selected installer cannot preserve the active NVIDIA profile. Select a compatible source-build installer or pass -CpuOnly.'
+            }
+            $arguments.InstallNvidiaGpu = $true
+        }
         & $InstallerPath @arguments
     }
     $previous = if ($state -and $state.current.release_id -eq $releaseId) {

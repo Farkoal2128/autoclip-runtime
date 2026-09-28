@@ -80,7 +80,7 @@ def validate_publisher_wheels(wheels: list[Path], entries: list[dict]) -> None:
 
 
 LEGAL_MEMBER = re.compile(
-    r"(^|/)(licen[cs]e[^/]*|copying[^/]*|authors[^/]*|.*notices?[^/]*|copyright[^/]*|thirdparty[^/]*)$",
+    r"(^|/)(licen[cs]e[^/]*|copying[^/]*|authors[^/]*|.*notices?[^/]*|copyright[^/]*|thirdparty[^/]*)$|^autoclip/assets/licenses/(?:[^/]+-OFL\.txt|README\.md)$",
     re.I,
 )
 
@@ -119,6 +119,22 @@ def attach_review_index(wheels: list[Path], source: Path, target: Path) -> None:
     for wheel in wheels:
         if hashlib.sha256(wheel.read_bytes()).hexdigest() != reviewed[wheel.name]["sha256"]:
             raise ValueError(f"legal index wheel hash mismatch: {wheel.name}")
+        row = reviewed[wheel.name]
+        if row.get("normalized_name") == "autoclip":
+            with zipfile.ZipFile(wheel) as archive:
+                for name in archive.namelist():
+                    if not re.fullmatch(r"autoclip/assets/licenses/(?:[^/]+-OFL\.txt|README\.md)", name):
+                        continue
+                    digest = hashlib.sha256(archive.read(name)).hexdigest()
+                    row.setdefault("legal_sha256", {})[name] = digest
+                    if name not in row.setdefault("legal_files", []):
+                        row["legal_files"].append(name)
+                    sidecar = f"notices-and-source/wheel-notices/{wheel.name}/{name}"
+                    if sidecar not in row.setdefault("verified_sidecar_copies", []):
+                        row["verified_sidecar_copies"].append(sidecar)
+                    for location in (f"wheelhouse/{wheel.name}!/{name}", sidecar):
+                        if location not in row.setdefault("fulfillment_locations", []):
+                            row["fulfillment_locations"].append(location)
     portable = {
         "schema_version": 1,
         "source_audit_archive_sha256": audit.get("candidate_archive_sha256"),

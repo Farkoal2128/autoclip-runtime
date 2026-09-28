@@ -26,7 +26,7 @@ try {
     foreach ($required in @('--exact', '--id Git.Git', '--version 2.55.0.3', '--architecture x64', '--source winget')) {
         if (-not $arguments.Contains($required)) { throw "Pinned winget argument missing: $required" }
     }
-    if ($installer -notmatch 'if \(\$InstallNvidiaGpu\) \{\s*if \(-not \$CudaRoot\)') {
+    if ($installer -notmatch 'if \(\$InstallNvidiaGpu\) \{\s*\. \(Join-Path \$PSScriptRoot ''cuda-prerequisites.ps1''\)\s*\$CudaRoot = Ensure-CudaPrerequisites') {
         throw 'CUDA toolkit preflight is no longer gated by the NVIDIA switch.'
     }
     Write-Output 'Pinned package invocation and optional NVIDIA prerequisite guard passed.'

@@ -38,6 +38,13 @@ class CpuBootstrapContractTests(unittest.TestCase):
         self.assertIn("cmake_arguments", builder)
         self.assertIn("$windowsTar = Join-Path $env:SystemRoot 'System32\\tar.exe'", builder)
 
+    def test_onednn_documentation_probe_uses_controlled_python(self) -> None:
+        builder = (ROOT / "build-native-from-source.ps1").read_text(encoding="utf-8")
+        onednn_configure = next(
+            line for line in builder.splitlines() if "Invoke-Checked $cmake @('-S', $oneDnnSource" in line
+        )
+        self.assertIn('"-DPYTHON_EXECUTABLE=$(Convert-ToCmakePath $buildPython)"', onednn_configure)
+
 
 if __name__ == "__main__":
     unittest.main()

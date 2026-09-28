@@ -130,6 +130,35 @@ class SourceRoutedReleaseTest(unittest.TestCase):
             self.assertEqual((base / "example-1.0.dist-info" / "licenses" / "AUTHORS").read_text(), "Author A")
             self.assertEqual((base / "example-1.0.dist-info" / "licenses" / "LICENSE").read_text(), "same permission text")
 
+    def test_app_font_notices_are_indexed_and_copied(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            wheel_path = root / "autoclip-1.0-py3-none-any.whl"
+            license_path = "autoclip-1.0.dist-info/licenses/LICENSE"
+            font_path = "autoclip/assets/licenses/Anton-OFL.txt"
+            readme_path = "autoclip/assets/licenses/README.md"
+            with zipfile.ZipFile(wheel_path, "w") as wheel:
+                wheel.writestr(license_path, "app license")
+                wheel.writestr(font_path, "font copyright and OFL")
+                wheel.writestr(readme_path, "font-to-notice map")
+            audit = root / "audit.json"
+            audit.write_text(json.dumps({"schema_version": 1, "packages": [{
+                "normalized_name": "autoclip", "filename": wheel_path.name,
+                "sha256": hashlib.sha256(wheel_path.read_bytes()).hexdigest(),
+                "legal_files": [license_path],
+                "legal_sha256": {license_path: hashlib.sha256(b"app license").hexdigest()},
+                "verified_sidecar_copies": [], "fulfillment_locations": [],
+            }]}), encoding="utf-8")
+            target = root / "release"
+            module.attach_review_index([wheel_path], audit, target)
+            module.copy_missing_legal_files([wheel_path], target)
+            indexed = json.loads((target / "notices-and-source/legal-index.json").read_text())
+            app = indexed["packages"][0]
+            for path in (font_path, readme_path):
+                self.assertIn(path, app["legal_files"])
+                self.assertEqual(app["legal_sha256"][path], hashlib.sha256(zipfile.ZipFile(wheel_path).read(path)).hexdigest())
+                self.assertTrue((target / "notices-and-source/wheel-notices" / wheel_path.name / path).is_file())
+
     def test_rejects_legal_index_for_different_wheel_bytes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

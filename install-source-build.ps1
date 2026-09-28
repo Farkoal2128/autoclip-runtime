@@ -238,7 +238,7 @@ try {
     . (Join-Path $InstallRoot 'upstream-assets.ps1')
     $wheelProfile = if ($InstallNvidiaGpu) { 'nvidia' } else { 'cpu' }
     $externalWheels = Join-Path $InstallRoot "publisher-wheels\$wheelProfile"
-    & (Join-Path $InstallRoot 'Prepare-AutoClipOfflineCache.ps1') -ManifestPath $manifestPath -CacheRoot $publisherCache -StageWheelhouse $externalWheels -Offline:$OfflinePublisherCache
+    & (Join-Path $InstallRoot 'Prepare-AutoClipOfflineCache.ps1') -ManifestPath $manifestPath -CacheRoot $publisherCache -StageWheelhouse $externalWheels -Offline:$OfflinePublisherCache -InstallNvidiaGpu:$InstallNvidiaGpu
     if (-not $?) { throw 'Publisher wheel acquisition failed.' }
     $microsoft = $null
     $openblasArchive = $null

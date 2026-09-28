@@ -99,3 +99,22 @@ same/different-runtime rollback, a known legacy install, and failure before
 activation. Record fresh-install and normal-update transfer sizes per release.
 A future content-addressed wheel store or binary patch scheme needs its own
 justification; it is not part of this baseline architecture.
+# Source-build profile selection
+
+For a new source-built runtime, the updater retains the active runtime's
+NVIDIA profile when its verified native build receipt reports `profile=nvidia`
+and the selected installer supports `-InstallNvidiaGpu`. A user can request
+`-CpuOnly` to select the CPU profile for the new runtime. The updater rejects a
+profile-preserving update when the selected installer lacks the NVIDIA option;
+it does not silently change the selected profile. Explicit `-InstallNvidiaGpu`
+and `-CpuOnly` cannot be combined. This policy does not alter an installed
+runtime or the public release pin.
+When a target source build already exists, its native receipt must match the
+requested or preserved profile before the updater selects it.
+
+Publisher cache preparation defaults to ordinary dependency wheels. Explicit
+`-InstallNvidiaGpu` also includes the optional Python wheels declared in
+`external_assets`. `-Offline` requires verified cached bytes for every selected
+wheel and never downloads missing or corrupt entries. The source-build installer
+forwards NVIDIA selection when using `-OfflinePublisherCache`; source checkouts,
+CUDA Toolkit, build tools and models retain separate acquisition requirements.

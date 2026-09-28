@@ -171,7 +171,7 @@ if (-not @(Get-ChildItem -LiteralPath $Wheelhouse -Filter 'av-18.1.0-*.whl').Cou
 
 $oneDnnBuild = Join-Path $BuildRoot 'onednn-build'
 $oneDnnInstall = Join-Path $BuildRoot 'onednn-install'
-Invoke-Checked $cmake @('-S', $oneDnnSource, '-B', $oneDnnBuild, '-G', 'Visual Studio 17 2022', '-A', 'x64', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5', '-DDNNL_LIBRARY_TYPE=STATIC', '-DDNNL_CPU_RUNTIME=SEQ', '-DDNNL_GPU_RUNTIME=NONE', '-DDNNL_BUILD_TESTS=OFF', '-DDNNL_BUILD_EXAMPLES=OFF', "-DCMAKE_INSTALL_PREFIX=$(Convert-ToCmakePath $oneDnnInstall)")
+Invoke-Checked $cmake @('-S', $oneDnnSource, '-B', $oneDnnBuild, '-G', 'Visual Studio 17 2022', '-A', 'x64', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5', '-DDNNL_LIBRARY_TYPE=STATIC', '-DDNNL_CPU_RUNTIME=SEQ', '-DDNNL_GPU_RUNTIME=NONE', '-DDNNL_BUILD_TESTS=OFF', '-DDNNL_BUILD_EXAMPLES=OFF', "-DPYTHON_EXECUTABLE=$(Convert-ToCmakePath $buildPython)", "-DCMAKE_INSTALL_PREFIX=$(Convert-ToCmakePath $oneDnnInstall)")
 Invoke-Checked $cmake @('--build', $oneDnnBuild, '--config', 'Release', '--parallel', '8')
 Invoke-Checked $cmake @('--install', $oneDnnBuild, '--config', 'Release')
 

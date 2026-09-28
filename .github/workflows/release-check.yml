@@ -38,11 +38,14 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./.github/tests/NativeWheelCache.Tests.ps1
+      - name: Optional NVIDIA publisher-cache regression cases
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./.github/tests/OptionalNvidiaPublisherCache.Tests.ps1
       - name: Source-routed package regression cases
         shell: pwsh
         run: |
-          python ./.github/tests/test_source_routed_release.py
-          python ./.github/tests/test_verify_install_wheels.py
+          python -m unittest discover -s .github/tests -p 'test_*.py'
           python -m py_compile scripts/build-source-routed-release.py scripts/inventory-source-routed-release.py scripts/verify-native-source-wheels.py scripts/verify-install-wheels.py
       - name: Publisher-cache updater forwarding
         shell: pwsh

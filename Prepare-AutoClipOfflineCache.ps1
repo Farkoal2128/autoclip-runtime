@@ -3,6 +3,7 @@ param(
     [string]$CacheRoot = (Join-Path (Join-Path $env:LOCALAPPDATA 'AutoClip') 'cache\artifacts'),
     [string]$StageWheelhouse,
     [switch]$Offline,
+    [switch]$InstallNvidiaGpu,
     [scriptblock]$DownloadScript
 )
 
@@ -13,15 +14,24 @@ if ($manifest.schema_version -ne 3 -or $null -eq $manifest.publisher_wheels) {
     throw 'Unsupported publisher-wheel manifest.'
 }
 $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
-foreach ($item in $manifest.publisher_wheels) {
+$items = @($manifest.publisher_wheels | ForEach-Object {
+    [pscustomobject]@{ Wheel = $_; External = $false }
+})
+if ($InstallNvidiaGpu) {
+    $items += @($manifest.external_assets | Where-Object { $_.kind -eq 'python_wheel' } | ForEach-Object {
+        [pscustomobject]@{ Wheel = $_; External = $true }
+    })
+}
+foreach ($selected in $items) {
+    $item = $selected.Wheel
     $filename = [string]$item.filename
     if (-not $seen.Add($filename) -or
         $filename -notmatch '^[A-Za-z0-9][A-Za-z0-9._+-]*\.whl$' -or
-        [string]$item.delivery_policy -ne 'publisher' -or
+        (-not $selected.External -and [string]$item.delivery_policy -ne 'publisher') -or
         [string]$item.url -notmatch '^https://files\.pythonhosted\.org/' -or
         [string]$item.sha256 -notmatch '^[0-9a-fA-F]{64}$' -or
         [long]$item.bytes -le 0 -or
-        -not $item.package -or -not $item.version -or -not $item.publisher_identity) {
+        (-not $selected.External -and (-not $item.package -or -not $item.version -or -not $item.publisher_identity))) {
         throw "Invalid publisher wheel identity: $filename"
     }
     $hash = ([string]$item.sha256).ToLowerInvariant()
