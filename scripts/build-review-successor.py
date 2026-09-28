@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import subprocess
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -24,12 +25,13 @@ def build(base, expected_base, repo, revision, release_id, output, installer):
     revision = subprocess.check_output(['git','rev-parse',revision],cwd=repo,text=True).strip()
     def committed(name):
         return subprocess.check_output(['git','show',revision+':'+name],cwd=repo)
-    # Execute only the named recipe from the revision; resolve reviewed rule data
-    # against this checkout and assert both match the committed inputs.
-    recipe = repo/'scripts/build-source-routed-release.py'
+    # Materialize the committed recipe and data, avoiding checkout newline conversion.
+    recipe_directory = tempfile.TemporaryDirectory(prefix='autoclip-committed-recipe-')
+    recipe_root = Path(recipe_directory.name)
+    recipe = recipe_root/'scripts/build-source-routed-release.py'
+    recipe.parent.mkdir()
     for name in ('scripts/build-source-routed-release.py','review-license-normalization.json'):
-        if (repo/name).read_bytes() != committed(name):
-            raise ValueError('Checkout does not match committed review recipe: '+name)
+        (recipe_root/name).write_bytes(committed(name))
     spec=importlib.util.spec_from_file_location('review_recipe',recipe)
     module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
     with zipfile.ZipFile(base) as source:
@@ -109,6 +111,7 @@ def build(base, expected_base, repo, revision, release_id, output, installer):
                 raise ValueError('Successor archive hash mismatch: '+row['path'])
     result=dict(release_id=release_id,runtime_commit=revision,archive_sha256=sha(output.read_bytes()),archive_bytes=output.stat().st_size,manifest_sha256=sha(encoded(manifest)),installer_sha256=sha(installer.read_bytes()),legal_index_sha256=sha(encoded(legal)),indexed_files=len(indexed),members=len(indexed)+1)
     (output.parent/'identities.json').write_bytes(encoded(result))
+    recipe_directory.cleanup()
     return result
 
 
