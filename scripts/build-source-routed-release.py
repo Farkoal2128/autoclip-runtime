@@ -284,7 +284,7 @@ def validate_c5_review_overlay(artifacts: list, rule: dict, read_member) -> None
     if (component.get('build_evidence') != [evidence]
             or review.get('path') != evidence['path']
             or review.get('sha256') != evidence['sha256']
-            or not review.get('scope')
+            or review.get('scope') != rule['current_review_scope']
             or hashlib.sha256(read_member(evidence['path'])).hexdigest() != evidence['sha256']):
         raise ValueError('C5 review evidence mismatch')
 
@@ -308,10 +308,21 @@ def validate_c7_review_overlay(artifacts: list, rule: dict, read_member) -> None
         review = component.get('current_review', {})
         if (review.get('path') != rule['review_path']
                 or review.get('sha256') != rule['review_sha256']
-                or not review.get('scope')):
+                or review.get('scope') != rule['current_review_scope']):
             raise ValueError('C7 review evidence mismatch: ' + name)
     if hashlib.sha256(read_member(rule['review_path'])).hexdigest() != rule['review_sha256']:
         raise ValueError('C7 review evidence mismatch')
+
+
+def validate_c5_review_source_provenance(provenance: dict, rule: dict,
+                                         read_member, read_git_object) -> None:
+    """Bind the delivered C5 reassessment to the exact current Git object."""
+    source_path = rule['review_source_path']
+    expected = rule['review_sha256']
+    if (provenance.get('committed_source_sha256', {}).get(source_path) != expected
+            or hashlib.sha256(read_member(rule['review_path'])).hexdigest() != expected
+            or hashlib.sha256(read_git_object(source_path)).hexdigest() != expected):
+        raise ValueError('C5 source provenance mismatch')
 
 
 def validate_static_runtime_notice_routes(artifacts: list, required: list, read_member) -> None:

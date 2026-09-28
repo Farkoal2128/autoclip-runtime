@@ -23,6 +23,7 @@ class C7ReviewOverlayTest(unittest.TestCase):
             "components": ["mingw-w64-runtime", "winpthreads"],
             "review_path": path,
             "review_sha256": hashlib.sha256(review).hexdigest(),
+            "current_review_scope": "exact v33 C7 notice/mapping continuity only",
         }
         asset = {"sha256": rule["artifact_sha256"], "member_path": rule["member_path"],
                  "member_sha256": rule["member_sha256"], "components": [
@@ -37,6 +38,10 @@ class C7ReviewOverlayTest(unittest.TestCase):
             component["current_review"] = {"path": path, "sha256": rule["review_sha256"],
                                             "scope": "exact v33 C7 notice/mapping continuity only"}
         module.validate_c7_review_overlay([asset], rule, files.__getitem__)
+        asset["components"][0]["current_review"]["scope"] = "all MinGW notices legally cleared"
+        with self.assertRaisesRegex(ValueError, "C7 review evidence mismatch"):
+            module.validate_c7_review_overlay([asset], rule, files.__getitem__)
+        asset["components"][0]["current_review"]["scope"] = rule["current_review_scope"]
         files[path] = b"altered"
         with self.assertRaisesRegex(ValueError, "C7 review evidence mismatch"):
             module.validate_c7_review_overlay([asset], rule, files.__getitem__)

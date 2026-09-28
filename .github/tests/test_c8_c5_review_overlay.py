@@ -25,6 +25,7 @@ class C5ReviewOverlayTest(unittest.TestCase):
             "review_path": path,
             "review_sha256": digest,
             "current_version_scope": "GCC 9.3.0 identified in exact DLL; precise object set not independently enumerated",
+            "current_review_scope": "bounded engineering/compliance review for exact external OpenBLAS DLL",
         }
         component = {
             "name": "gcc-fortran-runtime",
@@ -58,6 +59,10 @@ class C5ReviewOverlayTest(unittest.TestCase):
             version_scope=rule["current_version_scope"],
         )
         module.validate_c5_review_overlay([asset], rule, {path: evidence}.__getitem__)
+        component["current_review"]["scope"] = "all OpenBLAS releases legally cleared for publication"
+        with self.assertRaisesRegex(ValueError, "C5 review evidence mismatch"):
+            module.validate_c5_review_overlay([asset], rule, {path: evidence}.__getitem__)
+        component["current_review"]["scope"] = rule["current_review_scope"]
         component["version_scope"] = "precise incorporated object set pending publisher evidence"
         with self.assertRaisesRegex(ValueError, "Stale current C5 version scope"):
             module.validate_c5_review_overlay([asset], rule, {path: evidence}.__getitem__)

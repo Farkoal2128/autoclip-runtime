@@ -19,13 +19,15 @@ def encoded(value):
 
 def build(base, expected_base, repo, revision, release_id, output, installer,
           inventory_only=True, notice_only=False, c5_overlay_only=False,
-          current_state_only=False):
+          current_state_only=False, provenance_only=False):
     if notice_only and not inventory_only:
         raise ValueError('C7 notice correction cannot refresh other review material')
     if c5_overlay_only and (not inventory_only or notice_only):
         raise ValueError('C8 overlay cannot combine with other review transformations')
     if current_state_only and (not inventory_only or notice_only or c5_overlay_only):
         raise ValueError('C9 current-state correction cannot combine with other transformations')
+    if provenance_only and (not inventory_only or notice_only or c5_overlay_only or current_state_only):
+        raise ValueError('C10 provenance correction cannot combine with other transformations')
     if output.exists() or installer.exists():
         raise ValueError('Refusing to replace immutable outputs')
     if sha(base.read_bytes()) != expected_base:
@@ -63,7 +65,7 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
             names+=('review-static-runtime-notices.json',)
         if c5_overlay_only:
             names+=('review-c5-current-state.json',)
-        if current_state_only:
+        if current_state_only or provenance_only:
             names+=('review-c5-current-state.json','review-c7-current-state.json')
         source_hashes={}
         for name in names:
@@ -272,6 +274,19 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
                  'The exact v33 independent decision is delivered at '+c7_rule['review_path']+
                  '. The current legal index binds this review to both unchanged C7 notice routes. '+
                  'No release or publication approval is asserted.\n').encode())
+        if provenance_only:
+            c5_rule=json.loads(committed('review-c5-current-state.json'))
+            c7_rule=json.loads(committed('review-c7-current-state.json'))
+            if c5_rule.get('schema_version')!=1 or c7_rule.get('schema_version')!=1:
+                raise ValueError('C10 review rule schema differs')
+            for review_rule in (c5_rule,c7_rule):
+                review_bytes=committed(review_rule['review_source_path'])
+                if (sha(review_bytes)!=review_rule['review_sha256']
+                        or source.read(review_rule['review_path'])!=review_bytes):
+                    raise ValueError('C10 committed review evidence differs')
+                source_hashes[review_rule['review_source_path']]=sha(review_bytes)
+            module.validate_c5_review_overlay(legal['external_assets'],c5_rule,source.read)
+            module.validate_c7_review_overlay(legal['external_assets'],c7_rule,source.read)
         provenance=json.loads(source.read('notices-and-source/build-provenance.json'))
         provenance.update(runtime_commit=revision,source_state='committed_runtime_source',construction_base_archive_sha256=expected_base,committed_source_sha256=source_hashes)
         if inventory_only:
@@ -297,6 +312,13 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
                     'current C7 independent-review status and GCC version wording corrected with exact evidence; '
                     'focused independent successor disposition pending')
                 provenance['c9_review_rule_sha256']=sha(committed('review-c7-current-state.json'))
+            if provenance_only:
+                provenance['reviewed_material_carry_forward']['scope']=(
+                    'Unchanged legal, C7 notice, SBOM, source archive, app, native, wheels and terms bytes; '
+                    'exact C5 source association restored and bounded C5/C7 audit scopes pinned; '
+                    'focused independent successor disposition pending')
+                provenance['c10_c5_review_rule_sha256']=sha(committed('review-c5-current-state.json'))
+                provenance['c10_c7_review_rule_sha256']=sha(committed('review-c7-current-state.json'))
         changes['notices-and-source/build-provenance.json']=encoded(provenance)
         if not inventory_only:
             changes['notices-and-source/MANIFEST.md']=source.read('notices-and-source/MANIFEST.md')+f'\n\n## {release_id}\n\nCurrent runtime source `{revision}`. Current source snapshots are under build-provenance/current. Earlier snapshots retain historical scope. Review metadata and prerequisite consent corrected; independent final disposition pending.\n'.encode()
@@ -345,6 +367,13 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
             final_assets=json.loads(target.read('notices-and-source/legal-index.json'))['external_assets']
             module.validate_c5_review_overlay(final_assets,c5_rule,target.read)
             module.validate_c7_review_overlay(final_assets,c7_rule,target.read)
+        if provenance_only:
+            final_assets=json.loads(target.read('notices-and-source/legal-index.json'))['external_assets']
+            module.validate_c5_review_overlay(final_assets,c5_rule,target.read)
+            module.validate_c7_review_overlay(final_assets,c7_rule,target.read)
+            module.validate_c5_review_source_provenance(
+                json.loads(target.read('notices-and-source/build-provenance.json')),
+                c5_rule,target.read,committed)
         for row in packet_manifest['files']:
             raw=target.read(row['path'])
             if len(raw)!=row['bytes'] or sha(raw)!=row['sha256']:
@@ -364,9 +393,11 @@ if __name__=='__main__':
     p.add_argument('--apply-c7-notices',action='store_true',help='Apply only the pinned MinGW-w64 notice correction')
     p.add_argument('--apply-c8-c5-overlay',action='store_true',help='Correct only the current C5 GCC-row review metadata')
     p.add_argument('--apply-c9-current-state',action='store_true',help='Correct stale current C7 status and GCC version wording')
+    p.add_argument('--apply-c10-provenance',action='store_true',help='Restore C5 source association and pin bounded review scopes')
     a=p.parse_args()
     print(json.dumps(build(a.base,a.expected_base,a.repo,a.revision,a.release_id,a.output,a.installer,
                           inventory_only=not a.refresh_review_material,
                           notice_only=a.apply_c7_notices,
                           c5_overlay_only=a.apply_c8_c5_overlay,
-                          current_state_only=a.apply_c9_current_state),indent=2))
+                          current_state_only=a.apply_c9_current_state,
+                          provenance_only=a.apply_c10_provenance),indent=2))

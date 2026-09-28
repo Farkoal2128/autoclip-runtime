@@ -7,5 +7,6 @@
   "review_source_path": "review-component-evidence/cr09-c5-public-evidence-reassessment.md",
   "review_path": "notices-and-source/component-evidence/cr09-c5-public-evidence-reassessment.md",
   "review_sha256": "b792d05f124d16aabe347c089a3c0456e608be20a0a692128e1cce5d1ef9af11",
+  "current_review_scope": "Bounded engineering/compliance review for the exact external OpenBLAS DLL; no professional legal or publication clearance",
   "current_version_scope": "GCC 9.3.0 identified in exact DLL; precise incorporated object set not independently enumerated; private publisher records optional higher assurance"
 }
