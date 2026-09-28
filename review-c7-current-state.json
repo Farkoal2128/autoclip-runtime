@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "artifact_sha256": "8b04387766efc05c627e26d24797ec0d4ed4c105ec14fa7400aa84a02db22b66",
+  "member_path": "bin/libopenblas.dll",
+  "member_sha256": "e824cf9fc22e5949807ce995a32e413a345fb97e63e6d10cfbf41aa86382193c",
+  "components": ["mingw-w64-runtime", "winpthreads"],
+  "review_source_path": "review-component-evidence/cr09-v33-independent-c7-review.md",
+  "review_path": "notices-and-source/component-evidence/cr09-v33-independent-c7-review.md",
+  "review_sha256": "07fac8f0164dca640e7ed4433c8dbf80fd3b3d628d86448955d02df635aa1666"
+}

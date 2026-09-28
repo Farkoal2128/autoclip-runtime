@@ -18,11 +18,14 @@ def encoded(value):
 
 
 def build(base, expected_base, repo, revision, release_id, output, installer,
-          inventory_only=True, notice_only=False, c5_overlay_only=False):
+          inventory_only=True, notice_only=False, c5_overlay_only=False,
+          current_state_only=False):
     if notice_only and not inventory_only:
         raise ValueError('C7 notice correction cannot refresh other review material')
     if c5_overlay_only and (not inventory_only or notice_only):
         raise ValueError('C8 overlay cannot combine with other review transformations')
+    if current_state_only and (not inventory_only or notice_only or c5_overlay_only):
+        raise ValueError('C9 current-state correction cannot combine with other transformations')
     if output.exists() or installer.exists():
         raise ValueError('Refusing to replace immutable outputs')
     if sha(base.read_bytes()) != expected_base:
@@ -60,6 +63,8 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
             names+=('review-static-runtime-notices.json',)
         if c5_overlay_only:
             names+=('review-c5-current-state.json',)
+        if current_state_only:
+            names+=('review-c5-current-state.json','review-c7-current-state.json')
         source_hashes={}
         for name in names:
             data=committed(name); source_hashes[name]=sha(data)
@@ -213,6 +218,60 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
                  'retains its earlier pending state as historical metadata and points to '+
                  '`component-evidence/cr09-c5-public-evidence-reassessment.md` for the '+
                  'current bounded C5 disposition. No publication authority is asserted.\n').encode())
+        if current_state_only:
+            c5_rule=json.loads(committed('review-c5-current-state.json'))
+            c7_rule=json.loads(committed('review-c7-current-state.json'))
+            if c5_rule.get('schema_version')!=1 or c7_rule.get('schema_version')!=1:
+                raise ValueError('C9 review rule schema differs')
+            external=[row for row in legal['external_assets'] if row.get('sha256')==c7_rule['artifact_sha256']]
+            if (len(external)!=1 or external[0].get('member_path')!=c7_rule['member_path']
+                    or external[0].get('member_sha256')!=c7_rule['member_sha256']
+                    or c5_rule['artifact_sha256']!=c7_rule['artifact_sha256']):
+                raise ValueError('C9 exact external OpenBLAS identity differs')
+            gcc=[row for row in external[0]['components'] if row.get('name')==c5_rule['component']]
+            if len(gcc)!=1 or gcc[0].get('version_scope')!=(
+                    'GCC 9.3.0 inferred from exact DLL strings; precise incorporated object set pending publisher evidence'):
+                raise ValueError('C9 historical GCC version wording differs')
+            gcc[0].setdefault('historical_review_state',{})['version_scope']=gcc[0]['version_scope']
+            gcc[0]['version_scope']=c5_rule['current_version_scope']
+            source_corrections=json.loads(committed('review-component-corrections.json'))
+            definition=[row['mapping'] for row in source_corrections['native_routes']
+                        if row['artifact_sha256']==c5_rule['artifact_sha256']
+                        and row['component']==c5_rule['component']]
+            if len(definition)!=1 or definition[0]['version_scope']!=c5_rule['current_version_scope']:
+                raise ValueError('C9 source definition version wording differs')
+            if len(c7_rule['components'])!=2 or set(c7_rule['components'])!={'mingw-w64-runtime','winpthreads'}:
+                raise ValueError('C9 C7 component set differs')
+            for name in c7_rule['components']:
+                rows=[row for row in external[0]['components'] if row.get('name')==name]
+                if len(rows)!=1 or rows[0].get('fulfillment_status')!='exact_notice_delivered_focused_independent_review_pending':
+                    raise ValueError('C9 historical C7 status differs: '+name)
+                rows[0]['previous_review_state']={'fulfillment_status':rows[0].pop('fulfillment_status')}
+                rows[0]['fulfillment_status']='exact_notice_delivered_independent_v33_review_carried_forward'
+                rows[0]['current_review']=dict(path=c7_rule['review_path'],sha256=c7_rule['review_sha256'],
+                                               scope='Exact v33 C7 notice/mapping delivery carried forward by unchanged bytes; no broader legal or release clearance')
+            review_bytes=committed(c7_rule['review_source_path'])
+            if sha(review_bytes)!=c7_rule['review_sha256'] or c7_rule['review_path'] in source.namelist():
+                raise ValueError('C9 prior independent review bytes/path differ')
+            source_hashes[c7_rule['review_source_path']]=sha(review_bytes)
+            changes[c7_rule['review_path']]=review_bytes
+            legal.update(runtime_commit=revision,candidate_source_state='committed_runtime_source',
+                         native_build=dict(manifest['native_build']))
+            changes['notices-and-source/legal-index.json']=encoded(legal)
+            module.validate_c5_review_overlay(legal['external_assets'],c5_rule,
+                                              lambda name: changes.get(name) or source.read(name))
+            module.validate_c7_review_overlay(legal['external_assets'],c7_rule,
+                                              lambda name: changes.get(name) or source.read(name))
+            previous=source.read('notices-and-source/MANIFEST.md')
+            stale=b'Focused independent C7 disposition remains pending.'
+            if previous.count(stale)!=1:
+                raise ValueError('C9 stale recipient manifest sentence differs')
+            changes['notices-and-source/MANIFEST.md']=(previous.replace(
+                stale,b'Independent v33 C7 notice/mapping disposition is resolved for exact unchanged bytes; see legal-index.json for scope and review hash.')+
+                ('\n\n## '+release_id+' C7 review carry-forward\n\n'+
+                 'The exact v33 independent decision is delivered at '+c7_rule['review_path']+
+                 '. The current legal index binds this review to both unchanged C7 notice routes. '+
+                 'No release or publication approval is asserted.\n').encode())
         provenance=json.loads(source.read('notices-and-source/build-provenance.json'))
         provenance.update(runtime_commit=revision,source_state='committed_runtime_source',construction_base_archive_sha256=expected_base,committed_source_sha256=source_hashes)
         if inventory_only:
@@ -232,6 +291,12 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
                     'only current C5 GCC-row review metadata and dependent identities transformed; '
                     'focused independent C8 disposition pending')
                 provenance['c8_review_rule_sha256']=sha(committed('review-c5-current-state.json'))
+            if current_state_only:
+                provenance['reviewed_material_carry_forward']['scope']=(
+                    'Unchanged C7 notice bytes/mappings, app, native, wheels, SBOM, source archives and terms; '
+                    'current C7 independent-review status and GCC version wording corrected with exact evidence; '
+                    'focused independent successor disposition pending')
+                provenance['c9_review_rule_sha256']=sha(committed('review-c7-current-state.json'))
         changes['notices-and-source/build-provenance.json']=encoded(provenance)
         if not inventory_only:
             changes['notices-and-source/MANIFEST.md']=source.read('notices-and-source/MANIFEST.md')+f'\n\n## {release_id}\n\nCurrent runtime source `{revision}`. Current source snapshots are under build-provenance/current. Earlier snapshots retain historical scope. Review metadata and prerequisite consent corrected; independent final disposition pending.\n'.encode()
@@ -276,6 +341,10 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
             module.validate_c5_review_overlay(
                 json.loads(target.read('notices-and-source/legal-index.json'))['external_assets'],
                 rule, target.read)
+        if current_state_only:
+            final_assets=json.loads(target.read('notices-and-source/legal-index.json'))['external_assets']
+            module.validate_c5_review_overlay(final_assets,c5_rule,target.read)
+            module.validate_c7_review_overlay(final_assets,c7_rule,target.read)
         for row in packet_manifest['files']:
             raw=target.read(row['path'])
             if len(raw)!=row['bytes'] or sha(raw)!=row['sha256']:
@@ -294,8 +363,10 @@ if __name__=='__main__':
     p.add_argument('--refresh-review-material',action='store_true',help='Explicitly transform legal/SBOM material; default preserves reviewed bytes')
     p.add_argument('--apply-c7-notices',action='store_true',help='Apply only the pinned MinGW-w64 notice correction')
     p.add_argument('--apply-c8-c5-overlay',action='store_true',help='Correct only the current C5 GCC-row review metadata')
+    p.add_argument('--apply-c9-current-state',action='store_true',help='Correct stale current C7 status and GCC version wording')
     a=p.parse_args()
     print(json.dumps(build(a.base,a.expected_base,a.repo,a.revision,a.release_id,a.output,a.installer,
                           inventory_only=not a.refresh_review_material,
                           notice_only=a.apply_c7_notices,
-                          c5_overlay_only=a.apply_c8_c5_overlay),indent=2))
+                          c5_overlay_only=a.apply_c8_c5_overlay,
+                          current_state_only=a.apply_c9_current_state),indent=2))

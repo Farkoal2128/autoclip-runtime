@@ -277,6 +277,8 @@ def validate_c5_review_overlay(artifacts: list, rule: dict, read_member) -> None
             or 'required_input' in component
             or not component.get('optional_higher_assurance_input')):
         raise ValueError('Stale current C5 review state')
+    if component.get('version_scope') != rule['current_version_scope']:
+        raise ValueError('Stale current C5 version scope')
     evidence = {'path': rule['review_path'], 'sha256': rule['review_sha256']}
     review = component.get('current_review', {})
     if (component.get('build_evidence') != [evidence]
@@ -285,6 +287,31 @@ def validate_c5_review_overlay(artifacts: list, rule: dict, read_member) -> None
             or not review.get('scope')
             or hashlib.sha256(read_member(evidence['path'])).hexdigest() != evidence['sha256']):
         raise ValueError('C5 review evidence mismatch')
+
+
+def validate_c7_review_overlay(artifacts: list, rule: dict, read_member) -> None:
+    """Bind the exact independent C7 decision to both unchanged notice routes."""
+    matches = [row for row in artifacts if row.get('sha256') == rule['artifact_sha256']]
+    if (len(matches) != 1 or matches[0].get('member_path') != rule['member_path']
+            or matches[0].get('member_sha256') != rule['member_sha256']):
+        raise ValueError('C7 review artifact mismatch')
+    for name in rule['components']:
+        matches_for_name = [row for row in matches[0].get('components', []) if row.get('name') == name]
+        if len(matches_for_name) != 1:
+            raise ValueError('C7 review component mismatch: ' + name)
+        component = matches_for_name[0]
+        if (component.get('previous_review_state', {}).get('fulfillment_status')
+                != 'exact_notice_delivered_focused_independent_review_pending'
+                or component.get('fulfillment_status')
+                != 'exact_notice_delivered_independent_v33_review_carried_forward'):
+            raise ValueError('Stale current C7 review state: ' + name)
+        review = component.get('current_review', {})
+        if (review.get('path') != rule['review_path']
+                or review.get('sha256') != rule['review_sha256']
+                or not review.get('scope')):
+            raise ValueError('C7 review evidence mismatch: ' + name)
+    if hashlib.sha256(read_member(rule['review_path'])).hexdigest() != rule['review_sha256']:
+        raise ValueError('C7 review evidence mismatch')
 
 
 def validate_static_runtime_notice_routes(artifacts: list, required: list, read_member) -> None:
