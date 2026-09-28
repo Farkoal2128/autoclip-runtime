@@ -8,7 +8,8 @@ function Confirm-PrerequisiteTerms {
         [scriptblock]$PromptScript,
         [string]$TermsManifest = (Join-Path $PSScriptRoot 'prerequisite-terms.json')
     )
-    $manifest = if ($script:EmbeddedPrerequisiteTerms) { $script:EmbeddedPrerequisiteTerms | ConvertFrom-Json } else { Get-Content -LiteralPath $TermsManifest -Raw | ConvertFrom-Json }
+    $embeddedTerms = Get-Variable -Name EmbeddedPrerequisiteTerms -ValueOnly -ErrorAction SilentlyContinue
+    $manifest = if ($embeddedTerms) { $embeddedTerms | ConvertFrom-Json } else { Get-Content -LiteralPath $TermsManifest -Raw | ConvertFrom-Json }
     if ($manifest.schema_version -ne 1) { throw 'Unsupported prerequisite terms manifest.' }
     $terms = @($manifest.terms | Where-Object { $_.id -eq $Id })
     if ($terms.Count -ne 1) { throw "Missing exact prerequisite terms: $Id" }

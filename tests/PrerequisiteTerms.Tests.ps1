@@ -23,6 +23,11 @@ try {
         $r=Get-Content $file.FullName -Raw | ConvertFrom-Json
         if ($r.terms_sha256 -ne $hash -or $r.entitlement_independently_verified -ne $false -or -not $r.authority_and_use_rights_declared) { throw 'Receipt must bind exact terms without claiming verified entitlement.' }
     }
+    $script:EmbeddedPrerequisiteTerms=Get-Content $manifest -Raw
+    $child=Join-Path $root 'child.ps1'
+    Set-Content $child "param([string]`$ReceiptRoot) Confirm-PrerequisiteTerms -Id cuda -ReceiptRoot `$ReceiptRoot -TermsManifest 'missing-manifest.json' -Accepted -NonInteractive"
+    & $child -ReceiptRoot $root
+    $script:EmbeddedPrerequisiteTerms=$null
     $m=Get-Content $manifest -Raw | ConvertFrom-Json; $m.terms[0].sha256='0'*64; $m | ConvertTo-Json -Depth 5 | Set-Content $manifest
     $rejected=$false
     try { Confirm-PrerequisiteTerms -Id cuda -ReceiptRoot $root -TermsManifest $manifest -Accepted } catch { $rejected=$_.Exception.Message -like '*hash mismatch*' }
