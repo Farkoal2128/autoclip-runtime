@@ -57,6 +57,12 @@ pair. App layers must be isolated without modifying the shared environment;
 an app-wheel-only `--no-deps` layer or equivalent controlled import mechanism
 is acceptable after tested import resolution. No Windows symlink privilege or
 global `PATH` mutation should be required.
+For an app-only wheel, the staged base `Requires-Dist` declarations must all
+resolve to packages and versions in the selected immutable runtime before
+activation. Optional extras are checked when selected by a future explicit
+extra-aware update route; they are not implicitly installed by the app updater.
+An app release must not claim compatibility with an older runtime that lacks a
+new base dependency merely because its health endpoint starts successfully.
 
 Rollback selects the previous verified app. If current and previous apps use
 the same runtime, it requires no network or dependency reinstall. If they use

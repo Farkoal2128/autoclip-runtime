@@ -1,6 +1,7 @@
 param(
     [string]$RuntimeRoot,
-    [string]$WheelPath
+    [string]$WheelPath,
+    [string]$IncompatibleWheelPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -74,6 +75,56 @@ try {
         throw 'A second app release did not retain the prior app for rollback.'
     }
     $before = [IO.File]::ReadAllText((Join-Path $fixture 'app-active.json'))
+    $missingDependencyWheel = Join-Path $fixture 'missing-dependency.whl'
+    Copy-Item -LiteralPath $WheelPath -Destination $missingDependencyWheel
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [IO.Compression.ZipFile]::Open($missingDependencyWheel, 'Update')
+    try {
+        $metadataEntry = @($zip.Entries | Where-Object { $_.FullName -like '*.dist-info/METADATA' })
+        if ($metadataEntry.Count -ne 1) { throw 'The fixture wheel needs one METADATA entry.' }
+        $reader = [IO.StreamReader]::new($metadataEntry[0].Open())
+        try { $metadata = $reader.ReadToEnd() }
+        finally { $reader.Dispose() }
+        if (-not $metadata.Contains('Requires-Dist: fastapi')) {
+            throw 'The fixture wheel is missing its base dependency marker.'
+        }
+        $metadataEntry[0].Delete()
+        $writer = [IO.StreamWriter]::new($zip.CreateEntry($metadataEntry[0].FullName).Open())
+        try {
+            $writer.Write($metadata.Replace('Requires-Dist: fastapi',
+                "Requires-Dist: autoclip-runtime-guard-missing>=1`nRequires-Dist: fastapi"))
+        } finally { $writer.Dispose() }
+    } finally { $zip.Dispose() }
+    $manifest.app_id = 'fixture-missing-dependency'
+    $manifest.wheel_sha256 = (Get-FileHash -LiteralPath $missingDependencyWheel -Algorithm SHA256).Hash.ToLowerInvariant()
+    $manifest.wheel_size = (Get-Item -LiteralPath $missingDependencyWheel).Length
+    [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 5))
+    try {
+        & $updater -BaseRoot $fixture -ManifestPath $manifestPath -WheelPath $missingDependencyWheel -NoShortcut
+        throw 'An app wheel with a missing runtime dependency was activated.'
+    } catch {
+        if ($_.Exception.Message -notlike '*missing runtime dependency*') { throw }
+    }
+    if ([IO.File]::ReadAllText((Join-Path $fixture 'app-active.json')) -ne $before) {
+        throw 'A missing-dependency update changed the active app.'
+    }
+    if ($IncompatibleWheelPath) {
+        $manifest.app_id = 'fixture-real-incompatible-dependency'
+        $manifest.wheel_sha256 = (Get-FileHash -LiteralPath $IncompatibleWheelPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $manifest.wheel_size = (Get-Item -LiteralPath $IncompatibleWheelPath).Length
+        [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 5))
+        try {
+            & $updater -BaseRoot $fixture -ManifestPath $manifestPath -WheelPath $IncompatibleWheelPath -NoShortcut
+            throw 'The incompatible candidate app wheel was activated.'
+        } catch {
+            if ($_.Exception.Message -notlike '*missing runtime dependency*') { throw }
+        }
+        if ([IO.File]::ReadAllText((Join-Path $fixture 'app-active.json')) -ne $before) {
+            throw 'The incompatible candidate changed the active app.'
+        }
+    }
+    $manifest.wheel_sha256 = (Get-FileHash -LiteralPath $WheelPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $manifest.wheel_size = (Get-Item -LiteralPath $WheelPath).Length
     $manifest.app_id = 'fixture-bad-hash'
     $manifest.wheel_sha256 = ('0' * 64)
     [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 5))

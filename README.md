@@ -41,6 +41,10 @@ irm https://raw.githubusercontent.com/Farkoal2128/autoclip-runtime/main/update-a
 
 Project media, exports, settings, and credentials are outside managed runtime cleanup.
 
+The newer [CH application source handoff](docs/ch-runtime-readiness.md) adds a
+Pillow base dependency absent from v40. It is not yet a published app-only
+update for v40; its runtime successor is being prepared separately.
+
 ## Releases and historical versions
 
 | Route | Status |

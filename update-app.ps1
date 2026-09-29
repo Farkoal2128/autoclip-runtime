@@ -123,6 +123,34 @@ function Test-AppHealth($Python, [string]$Site) {
     try {
         $env:AUTOCLIP_HOME = $smokeHome
         $env:PYTHONPATH = $Site
+        $dependencyCheck = @'
+import importlib.metadata as metadata
+import sys
+
+from packaging.requirements import Requirement
+
+site = sys.argv[1]
+apps = [dist for dist in metadata.distributions(path=[site])
+        if dist.metadata.get('Name', '').lower() == 'autoclip']
+if len(apps) != 1:
+    raise SystemExit('Expected one staged AutoClip distribution.')
+missing = []
+for raw in apps[0].requires or []:
+    requirement = Requirement(raw)
+    if requirement.marker and not requirement.marker.evaluate({'extra': ''}):
+        continue
+    try:
+        installed = metadata.version(requirement.name)
+    except metadata.PackageNotFoundError:
+        missing.append(f'{requirement.name} (absent)')
+        continue
+    if requirement.specifier and installed not in requirement.specifier:
+        missing.append(f'{requirement.name} {installed} (requires {requirement.specifier})')
+if missing:
+    raise SystemExit('Missing or incompatible runtime dependencies: ' + ', '.join(missing))
+'@
+        & $Python -c $dependencyCheck $Site
+        if ($LASTEXITCODE -ne 0) { throw 'The staged app has a missing runtime dependency.' }
         & $Python -c "import pathlib; from fastapi.testclient import TestClient; from autoclip.app import create_app; import autoclip; assert pathlib.Path(autoclip.__file__).resolve().is_relative_to(pathlib.Path(r'$Site').resolve()); c = TestClient(create_app()); c.__enter__(); assert c.get('/api/health').status_code == 200; assert c.get('/').status_code == 200; c.__exit__(None, None, None)"
         if ($LASTEXITCODE -ne 0) { throw 'The staged app failed isolated health/home.' }
     } finally {
