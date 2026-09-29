@@ -142,7 +142,7 @@ root can be reused without a new Toolkit install; cuBLAS authorization is separa
 CPU mode never presents or accepts NVIDIA terms. Already installed valid Microsoft
 inputs do not trigger provisioning consent.
 
-The exact terms snapshots and their hashes are recorded in `prerequisite-terms.json`.
+The exact terms snapshots and their hashes are recorded in `release/scripts/prerequisite-terms.json`.
 Presentation includes a version, primary URL and local copy. Each affirmative
 declaration writes a receipt under the artifact cache's `terms` directory. It
 does not claim independently verified authority or entitlement. Microsoft Build

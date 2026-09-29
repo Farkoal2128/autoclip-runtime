@@ -18,6 +18,35 @@ def encoded(value):
     return (json.dumps(value, indent=2) + '\n').encode()
 
 
+SOURCE_PATH_ALIASES = {
+    'Prepare-AutoClipOfflineCache.ps1': 'release/scripts/Prepare-AutoClipOfflineCache.ps1',
+    'build-native-from-source.ps1': 'release/scripts/build-native-from-source.ps1',
+    'build-v11-codec-free-ffmpeg.sh': 'release/scripts/build-v11-codec-free-ffmpeg.sh',
+    'cuda-prerequisites.ps1': 'release/scripts/cuda-prerequisites.ps1',
+    'install-source-build.ps1': 'release/scripts/install-source-build.ps1',
+    'install-source-routed.ps1': 'release/scripts/install-source-routed.ps1',
+    'native-wheel-cache.ps1': 'release/scripts/native-wheel-cache.ps1',
+    'prerequisite-terms.ps1': 'release/scripts/prerequisite-terms.ps1',
+    'prerequisite-terms.json': 'release/scripts/prerequisite-terms.json',
+    'upstream-assets.ps1': 'release/scripts/upstream-assets.ps1',
+    'publisher-wheel-inputs.json': 'release/manifests/publisher-wheel-inputs.json',
+    'source-artifact-inputs.json': 'release/manifests/source-artifact-inputs.json',
+    'review-avx512-notice.json': 'release/review/review-avx512-notice.json',
+    'review-c5-current-state.json': 'release/review/review-c5-current-state.json',
+    'review-c7-current-state.json': 'release/review/review-c7-current-state.json',
+    'review-component-corrections.json': 'release/review/review-component-corrections.json',
+    'review-license-normalization.json': 'release/review/review-license-normalization.json',
+    'review-static-runtime-notices.json': 'release/review/review-static-runtime-notices.json',
+    'silero-vad-v6-LICENSE': 'release/review/silero-vad-v6-LICENSE',
+}
+
+
+def repository_source_path(name):
+    if name.startswith('review-component-evidence/'):
+        return 'release/review/component-evidence/' + name.split('/', 1)[1]
+    return SOURCE_PATH_ALIASES.get(name, name)
+
+
 def carry_forward_review_provenance(read_member, committed, source_hashes):
     """Preserve committed C5/C7 review associations in later successors."""
     rules = {}
@@ -90,14 +119,18 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
         raise ValueError('Base archive differs from exact review identity')
     revision = subprocess.check_output(['git','rev-parse',revision],cwd=repo,text=True).strip()
     def committed(name):
-        return subprocess.check_output(['git','show',revision+':'+name],cwd=repo)
+        return subprocess.check_output(
+            ['git','show',revision+':'+repository_source_path(name)], cwd=repo
+        )
     # Materialize the committed recipe and data, avoiding checkout newline conversion.
     recipe_directory = tempfile.TemporaryDirectory(prefix='autoclip-committed-recipe-')
     recipe_root = Path(recipe_directory.name)
     recipe = recipe_root/'scripts/build-source-routed-release.py'
     recipe.parent.mkdir()
-    for name in ('scripts/build-source-routed-release.py','review-license-normalization.json'):
-        (recipe_root/name).write_bytes(committed(name))
+    recipe.write_bytes(committed('scripts/build-source-routed-release.py'))
+    review_rules = recipe_root/'release/review/review-license-normalization.json'
+    review_rules.parent.mkdir(parents=True)
+    review_rules.write_bytes(committed('review-license-normalization.json'))
     spec=importlib.util.spec_from_file_location('review_recipe',recipe)
     module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
     with zipfile.ZipFile(base) as source:

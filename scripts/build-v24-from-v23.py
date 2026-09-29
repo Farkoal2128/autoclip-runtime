@@ -23,6 +23,11 @@ SNAPSHOT_NAMES = {
     "scripts/build-source-routed-release.py",
     "Prepare-AutoClipOfflineCache.ps1",
 }
+SNAPSHOT_PATHS = {
+    "build-native-from-source.ps1": "release/scripts/build-native-from-source.ps1",
+    "Prepare-AutoClipOfflineCache.ps1": "release/scripts/Prepare-AutoClipOfflineCache.ps1",
+}
+
 
 
 def sha(data: bytes) -> str:
@@ -187,7 +192,10 @@ def main() -> None:
     parser.add_argument("--release-id", required=True)
     args = parser.parse_args()
     runtime = Path(__file__).resolve().parents[1]
-    snapshot = {name: (runtime / name).read_bytes() for name in SNAPSHOT_NAMES}
+    snapshot = {
+        name: (runtime / SNAPSHOT_PATHS.get(name, name)).read_bytes()
+        for name in SNAPSHOT_NAMES
+    }
     result = derive(
         args.v23, args.app_wheel, args.v23_installer, args.archive, args.installer,
         expected_base_hash=V23_ARCHIVE_SHA256,

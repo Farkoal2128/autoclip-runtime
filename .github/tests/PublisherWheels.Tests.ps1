@@ -12,24 +12,24 @@ try {
     $stage = Join-Path $fixture 'stage'
     $calls = [pscustomobject]@{ Count = 0 }
     $download = { param($url, $path) $calls.Count++; Copy-Item -LiteralPath $source -Destination $path }.GetNewClosure()
-    & (Join-Path $repoRoot 'Prepare-AutoClipOfflineCache.ps1') -ManifestPath $manifest -CacheRoot $cache -StageWheelhouse $stage -DownloadScript $download
+    & (Join-Path $repoRoot 'release\scripts\Prepare-AutoClipOfflineCache.ps1') -ManifestPath $manifest -CacheRoot $cache -StageWheelhouse $stage -DownloadScript $download
     if ($calls.Count -ne 1 -or (Get-FileHash (Join-Path $stage 'example-1-py3-none-any.whl') -Algorithm SHA256).Hash.ToLowerInvariant() -ne $hash) { throw 'First publisher fetch failed.' }
-    & (Join-Path $repoRoot 'Prepare-AutoClipOfflineCache.ps1') -ManifestPath $manifest -CacheRoot $cache -StageWheelhouse $stage -Offline -DownloadScript $download
+    & (Join-Path $repoRoot 'release\scripts\Prepare-AutoClipOfflineCache.ps1') -ManifestPath $manifest -CacheRoot $cache -StageWheelhouse $stage -Offline -DownloadScript $download
     if ($calls.Count -ne 1) { throw 'Offline reuse downloaded a wheel.' }
     $cached = Join-Path (Join-Path (Join-Path $cache 'sha256') $hash) 'example-1-py3-none-any.whl'
     [IO.File]::WriteAllText($cached, 'corrupt')
     try {
-        & (Join-Path $repoRoot 'Prepare-AutoClipOfflineCache.ps1') -ManifestPath $manifest -CacheRoot $cache -Offline -DownloadScript $download
+        & (Join-Path $repoRoot 'release\scripts\Prepare-AutoClipOfflineCache.ps1') -ManifestPath $manifest -CacheRoot $cache -Offline -DownloadScript $download
         throw 'Offline mode accepted a corrupt cached wheel.'
     } catch {
         if ($_.Exception.Message -notlike '*Offline cache is missing*') { throw }
     }
-    & (Join-Path $repoRoot 'Prepare-AutoClipOfflineCache.ps1') -ManifestPath $manifest -CacheRoot $cache -StageWheelhouse $stage -DownloadScript $download
+    & (Join-Path $repoRoot 'release\scripts\Prepare-AutoClipOfflineCache.ps1') -ManifestPath $manifest -CacheRoot $cache -StageWheelhouse $stage -DownloadScript $download
     if ($calls.Count -ne 2) { throw 'Corrupt cached wheel was not redownloaded.' }
     Remove-Item -LiteralPath $cached -Force
     $interrupted = { param($url, $path) [IO.File]::WriteAllText($path, 'partial'); throw 'interrupted transfer' }
     try {
-        & (Join-Path $repoRoot 'Prepare-AutoClipOfflineCache.ps1') -ManifestPath $manifest -CacheRoot $cache -DownloadScript $interrupted
+        & (Join-Path $repoRoot 'release\scripts\Prepare-AutoClipOfflineCache.ps1') -ManifestPath $manifest -CacheRoot $cache -DownloadScript $interrupted
         throw 'Interrupted publisher transfer was accepted.'
     } catch {
         if ($_.Exception.Message -notlike '*interrupted transfer*') { throw }
@@ -40,7 +40,7 @@ try {
     $unsafe = Join-Path $fixture 'unsafe-manifest.json'
     @{ schema_version = 3; publisher_wheels = @(@{ package = 'example'; version = '1'; filename = '../escape.whl'; bytes = (Get-Item $source).Length; sha256 = $hash; url = 'https://files.pythonhosted.org/example.whl'; publisher_identity = 'PyPI project example'; delivery_policy = 'publisher' }) } | ConvertTo-Json -Depth 5 | Set-Content $unsafe
     try {
-        & (Join-Path $repoRoot 'Prepare-AutoClipOfflineCache.ps1') -ManifestPath $unsafe -CacheRoot $cache -DownloadScript $download
+        & (Join-Path $repoRoot 'release\scripts\Prepare-AutoClipOfflineCache.ps1') -ManifestPath $unsafe -CacheRoot $cache -DownloadScript $download
         throw 'Unsafe publisher manifest path was accepted.'
     } catch {
         if ($_.Exception.Message -notlike '*Invalid publisher wheel identity*') { throw }

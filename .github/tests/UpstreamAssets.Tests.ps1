@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-. (Join-Path $repoRoot 'upstream-assets.ps1')
+. (Join-Path $repoRoot 'release\scripts\upstream-assets.ps1')
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('autoclip-upstream-assets-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $fixture | Out-Null
 try {

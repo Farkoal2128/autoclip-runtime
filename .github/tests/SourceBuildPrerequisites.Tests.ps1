@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$installer = Get-Content -LiteralPath (Join-Path $repoRoot 'install-source-build.ps1') -Raw
+$installer = Get-Content -LiteralPath (Join-Path $repoRoot 'release\scripts\install-source-build.ps1') -Raw
 $tokens = $null
 $errors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseInput($installer, [ref]$tokens, [ref]$errors)
@@ -35,7 +35,7 @@ try {
     if (Test-Path -LiteralPath $fixture) { Remove-Item -LiteralPath $fixture -Recurse -Force }
 }
 
-$builder = Get-Content -LiteralPath (Join-Path $repoRoot 'build-native-from-source.ps1') -Raw
+$builder = Get-Content -LiteralPath (Join-Path $repoRoot 'release\scripts\build-native-from-source.ps1') -Raw
 $builderAst = [System.Management.Automation.Language.Parser]::ParseInput($builder, [ref]$tokens, [ref]$errors)
 if ($errors) { throw $errors[0] }
 $checked = $builderAst.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-Checked' }, $true)
