@@ -18,6 +18,31 @@ def encoded(value):
     return (json.dumps(value, indent=2) + '\n').encode()
 
 
+def carry_forward_review_provenance(read_member, committed, source_hashes):
+    """Preserve committed C5/C7 review associations in later successors."""
+    rules = {}
+    for label in ('c5', 'c7'):
+        name = f'review-{label}-current-state.json'
+        path = 'notices-and-source/build-provenance/current/' + name
+        try:
+            archived = read_member(path)
+        except KeyError:
+            if rules:
+                raise ValueError('C5/C7 review rules must travel together')
+            continue
+        if archived != committed(name):
+            raise ValueError(f'{label.upper()} review rule differs from committed source')
+        rule = json.loads(archived)
+        review = committed(rule['review_source_path'])
+        if sha(review) != rule['review_sha256'] or read_member(rule['review_path']) != review:
+            raise ValueError(f'{label.upper()} review evidence differs')
+        source_hashes[name] = sha(archived)
+        source_hashes[rule['review_source_path']] = sha(review)
+        rules[label] = rule
+    if rules and set(rules) != {'c5', 'c7'}:
+        raise ValueError('C5/C7 review rules must travel together')
+
+
 def build(base, expected_base, repo, revision, release_id, output, installer,
           inventory_only=True, notice_only=False, c5_overlay_only=False,
           current_state_only=False, provenance_only=False, avx512_notice_only=False):
@@ -336,6 +361,7 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
                  '`third_party/avx512_mathfun.h`. Its distinct SIMD_Utils BSD-2 notice is at `'+
                  rule['notice_path']+'`. `legal-index.json` binds the notice to the exact archived '+
                  'header and source archive. Focused independent disposition remains pending.\n').encode())
+        carry_forward_review_provenance(source.read, committed, source_hashes)
         provenance=json.loads(source.read('notices-and-source/build-provenance.json'))
         provenance.update(runtime_commit=revision,source_state='committed_runtime_source',construction_base_archive_sha256=expected_base,committed_source_sha256=source_hashes)
         if inventory_only:
