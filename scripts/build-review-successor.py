@@ -43,6 +43,24 @@ def carry_forward_review_provenance(read_member, committed, source_hashes):
         raise ValueError('C5/C7 review rules must travel together')
 
 
+def carry_forward_avx512_provenance(read_member, committed, source_hashes):
+    """Preserve the exact committed AVX512 rule and notice in later successors."""
+    name = 'review-avx512-notice.json'
+    try:
+        archived = read_member('notices-and-source/build-provenance/current/' + name)
+    except KeyError:
+        return
+    if archived != committed(name):
+        raise ValueError('AVX512 notice rule differs from committed source')
+    rule = json.loads(archived)
+    notice = committed(rule['notice_source_path'])
+    if (len(notice) != rule['notice_bytes'] or sha(notice) != rule['notice_sha256']
+            or read_member(rule['notice_path']) != notice):
+        raise ValueError('AVX512 notice differs')
+    source_hashes[name] = sha(archived)
+    source_hashes[rule['notice_source_path']] = sha(notice)
+
+
 def build(base, expected_base, repo, revision, release_id, output, installer,
           inventory_only=True, notice_only=False, c5_overlay_only=False,
           current_state_only=False, provenance_only=False, avx512_notice_only=False):
@@ -362,6 +380,7 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
                  rule['notice_path']+'`. `legal-index.json` binds the notice to the exact archived '+
                  'header and source archive. Focused independent disposition remains pending.\n').encode())
         carry_forward_review_provenance(source.read, committed, source_hashes)
+        carry_forward_avx512_provenance(source.read, committed, source_hashes)
         provenance=json.loads(source.read('notices-and-source/build-provenance.json'))
         provenance.update(runtime_commit=revision,source_state='committed_runtime_source',construction_base_archive_sha256=expected_base,committed_source_sha256=source_hashes)
         if inventory_only:

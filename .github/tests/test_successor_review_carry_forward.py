@@ -39,6 +39,25 @@ class ReviewCarryForwardTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "C7 review evidence differs"):
             module.carry_forward_review_provenance(source.__getitem__, files.__getitem__, {})
 
+    def test_retains_avx512_rule_and_notice_source(self):
+        notice = b"exact SIMD notice\n"
+        rule = {"notice_source_path": "review-component-evidence/simd-LICENSE",
+                "notice_path": "notices-and-source/component-evidence/simd-LICENSE",
+                "notice_sha256": hashlib.sha256(notice).hexdigest(),
+                "notice_bytes": len(notice)}
+        raw_rule = json.dumps(rule).encode()
+        files = {"review-avx512-notice.json": raw_rule,
+                 rule["notice_source_path"]: notice}
+        source = {"notices-and-source/build-provenance/current/review-avx512-notice.json": raw_rule,
+                  rule["notice_path"]: notice}
+        hashes = {}
+        module.carry_forward_avx512_provenance(source.__getitem__, files.__getitem__, hashes)
+        self.assertEqual(hashes, {name: hashlib.sha256(raw).hexdigest()
+                                  for name, raw in files.items()})
+        source[rule["notice_path"]] = b"wrong"
+        with self.assertRaisesRegex(ValueError, "AVX512 notice differs"):
+            module.carry_forward_avx512_provenance(source.__getitem__, files.__getitem__, {})
+
 
 if __name__ == "__main__":
     unittest.main()
