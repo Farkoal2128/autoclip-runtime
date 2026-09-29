@@ -21,7 +21,7 @@ $appStatePath = Join-Path $baseFull 'app-active.json'
 $launcherPath = Join-Path $baseFull 'Start-AutoClip.ps1'
 $desktopLauncherPath = Join-Path $baseFull 'Start-AutoClip-Desktop.ps1'
 $manifestUrl = 'https://raw.githubusercontent.com/Farkoal2128/autoclip-runtime/main/app-release.json'
-$expectedManifestSha256 = 'f674b742e3ac69e0b1ea29d82f0870ce2383bec8895c70bac38d95360c6e0e22'
+$expectedManifestSha256 = 'a4b13a9febd90c1eccb78074dd2eb38ad7b7a08071be7ca39cc102a577042f38'
 
 function Assert-Id([string]$Value) {
     if ($Value -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') { throw "Invalid release identifier: $Value" }

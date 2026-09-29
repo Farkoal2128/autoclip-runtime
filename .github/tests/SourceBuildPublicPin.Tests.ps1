@@ -17,6 +17,12 @@ $matches = @($app.compatible_runtimes | Where-Object { $_.release_id -eq $expect
 if ($matches.Count -ne 1 -or $matches[0].manifest_sha256 -ne $expectedManifest) {
     throw 'Public app compatibility entry does not bind exact v40 manifest.'
 }
+$appPath = Join-Path $repo 'app-release.json'
+$appHash = (Get-FileHash -LiteralPath $appPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$updater = [IO.File]::ReadAllText((Join-Path $repo 'update-app.ps1'))
+if (-not $updater.Contains("expectedManifestSha256 = '$appHash'")) {
+    throw 'App updater does not pin exact public app manifest bytes.'
+}
 if ($ArchivePath) {
     if (-not (Test-Path -LiteralPath $ArchivePath -PathType Leaf)) {
         throw 'Supplied v40 archive is missing.'

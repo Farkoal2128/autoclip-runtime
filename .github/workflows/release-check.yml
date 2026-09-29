@@ -19,7 +19,7 @@ jobs:
       - name: Parse installer and launch scripts
         shell: pwsh
         run: |
-          foreach ($name in @('install.ps1', 'install-source-routed.ps1', 'install-source-build.ps1', 'build-native-from-source.ps1', 'native-wheel-cache.ps1', 'update.ps1', 'update-app.ps1', 'upstream-assets.ps1', 'Start-AutoClip.ps1', '.github/tests/Update.Tests.ps1', '.github/tests/AppUpdate.Tests.ps1', '.github/tests/InstallRetry.Tests.ps1', '.github/tests/GpuRuntime.Tests.ps1', '.github/tests/ReleasePin.Tests.ps1', '.github/tests/ReleaseDownload.Tests.ps1', '.github/tests/UpstreamAssets.Tests.ps1', '.github/tests/ExternalCacheForward.Tests.ps1', '.github/tests/NativeWheelCache.Tests.ps1', '.github/scripts/verify-public-release.ps1', '.github/scripts/verify-public-app-release.ps1')) {
+          foreach ($name in @('install.ps1', 'install-source-routed.ps1', 'install-source-build.ps1', 'build-native-from-source.ps1', 'native-wheel-cache.ps1', 'update.ps1', 'update-app.ps1', 'upstream-assets.ps1', 'Start-AutoClip.ps1', '.github/tests/Update.Tests.ps1', '.github/tests/AppUpdate.Tests.ps1', '.github/tests/InstallRetry.Tests.ps1', '.github/tests/GpuRuntime.Tests.ps1', '.github/tests/ReleasePin.Tests.ps1', '.github/tests/ReleaseDownload.Tests.ps1', '.github/tests/ReleaseWorkflowRouting.Tests.ps1', '.github/tests/SourceBuildPublicPin.Tests.ps1', '.github/tests/UpstreamAssets.Tests.ps1', '.github/tests/ExternalCacheForward.Tests.ps1', '.github/tests/NativeWheelCache.Tests.ps1', '.github/scripts/verify-public-release.ps1', '.github/scripts/verify-public-app-release.ps1')) {
             $tokens = $null
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $name), [ref]$tokens, [ref]$errors) | Out-Null
@@ -31,6 +31,9 @@ jobs:
       - name: Release pin regression cases
         shell: pwsh
         run: ./.github/tests/ReleasePin.Tests.ps1
+      - name: Release workflow routing regression cases
+        shell: pwsh
+        run: ./.github/tests/ReleaseWorkflowRouting.Tests.ps1
       - name: Pinned upstream asset regression cases
         shell: pwsh
         run: ./.github/tests/UpstreamAssets.Tests.ps1
@@ -127,7 +130,7 @@ jobs:
         run: ./.github/scripts/verify-public-app-release.ps1
 
   windows-release-smoke:
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    if: (github.event_name == 'release' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/tags/v0.1.0-dev0-windows-v11-20260926-notice-correction'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -204,3 +207,15 @@ jobs:
           $python = Join-Path $env:RUNNER_TEMP 'AutoClip\v11-20260926-notice-correction\.venv\Scripts\python.exe'
           & $python -c "from fastapi.testclient import TestClient; from autoclip.app import create_app; c=TestClient(create_app()); c.__enter__(); assert c.get('/api/health').status_code == 200; assert c.get('/').status_code == 200; c.__exit__(None,None,None)"
           if ($LASTEXITCODE -ne 0) { throw 'Packaged health/home smoke failed.' }
+
+  windows-source-build-release-identity:
+    if: (github.event_name == 'release' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/tags/v0.1.0-dev0-windows-source-v40-20260928'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact v40 installer and app pins
+        shell: pwsh
+        run: ./.github/tests/SourceBuildPublicPin.Tests.ps1
+      - name: Download and verify published v40 archive and manifest
+        shell: pwsh
+        run: ./.github/scripts/verify-public-release.ps1
