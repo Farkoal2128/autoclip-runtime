@@ -61,6 +61,16 @@ def carry_forward_avx512_provenance(read_member, committed, source_hashes):
     source_hashes[rule['notice_source_path']] = sha(notice)
 
 
+def preserve_prior_source_associations(prior, committed, source_hashes):
+    """Retain every unmodified association from the immutable base release."""
+    for path, digest in prior.items():
+        if path in source_hashes:
+            continue
+        if sha(committed(path)) != digest:
+            raise ValueError('Prior source association differs: ' + path)
+        source_hashes[path] = digest
+
+
 def build(base, expected_base, repo, revision, release_id, output, installer,
           inventory_only=True, notice_only=False, c5_overlay_only=False,
           current_state_only=False, provenance_only=False, avx512_notice_only=False):
@@ -382,6 +392,8 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
         carry_forward_review_provenance(source.read, committed, source_hashes)
         carry_forward_avx512_provenance(source.read, committed, source_hashes)
         provenance=json.loads(source.read('notices-and-source/build-provenance.json'))
+        preserve_prior_source_associations(provenance['committed_source_sha256'],
+                                           committed, source_hashes)
         provenance.update(runtime_commit=revision,source_state='committed_runtime_source',construction_base_archive_sha256=expected_base,committed_source_sha256=source_hashes)
         if inventory_only:
             provenance['reviewed_material_carry_forward']=dict(

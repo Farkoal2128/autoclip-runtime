@@ -14,6 +14,20 @@ spec.loader.exec_module(module)
 
 
 class ReviewCarryForwardTest(unittest.TestCase):
+    def test_preserves_every_prior_source_association(self):
+        raw = b"prior exact source\n"
+        digest = hashlib.sha256(raw).hexdigest()
+        prior = {"review-component-evidence/prior.md": digest,
+                 "scripts/build-review-successor.py": "0" * 64}
+        current = {"scripts/build-review-successor.py": "1" * 64}
+        module.preserve_prior_source_associations(
+            prior, {"review-component-evidence/prior.md": raw}.__getitem__, current)
+        self.assertEqual(current["review-component-evidence/prior.md"], digest)
+        self.assertEqual(current["scripts/build-review-successor.py"], "1" * 64)
+        with self.assertRaisesRegex(ValueError, "Prior source association differs"):
+            module.preserve_prior_source_associations(
+                prior, {"review-component-evidence/prior.md": b"wrong"}.__getitem__, {})
+
     def test_retains_both_review_rules_and_committed_evidence(self):
         files = {}
         source = {}
