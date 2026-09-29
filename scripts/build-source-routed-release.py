@@ -255,6 +255,39 @@ def validate_native_component_routes(artifacts: list, required: list, read_membe
                 raise ValueError('Compiler exception eligibility is not verified')
 
 
+def validate_avx512_notice_route(mapping: dict, rule: dict, read_member) -> None:
+    """Bind the selected CTranslate2 AVX512 header to its distinct BSD-2 notice."""
+    if (mapping.get('component') != rule['component']
+            or mapping.get('version_scope') != rule['version_scope']
+            or mapping.get('source_archive_path') != rule['source_archive_path']
+            or mapping.get('source_archive_sha256') != rule['source_archive_sha256']
+            or mapping.get('header_path') != rule['header_path']
+            or mapping.get('header_sha256') != rule['header_sha256']
+            or mapping.get('license_expression') != 'BSD-2-Clause'
+            or mapping.get('selected_build_scope') != ['CPU/default','optional NVIDIA']
+            or mapping.get('source_evidence') != {
+                'url': rule['upstream_license_url'], 'sha256': rule['notice_sha256']}
+            or mapping.get('fulfillment_status') != 'exact_notice_delivered_focused_independent_review_pending'
+            or mapping.get('license_paths') != [{
+                'path': rule['notice_path'], 'sha256': rule['notice_sha256']}]):
+        raise ValueError('AVX512 notice route mismatch')
+    try:
+        import io
+        import zipfile
+        source = read_member(rule['source_archive_path'])
+        with zipfile.ZipFile(io.BytesIO(source)) as archive:
+            if len(archive.namelist()) != len(set(archive.namelist())):
+                raise ValueError('Duplicate CTranslate2 source members')
+            header = archive.read(rule['header_path'])
+        notice = read_member(rule['notice_path'])
+    except (KeyError, FileNotFoundError, zipfile.BadZipFile) as exc:
+        raise ValueError('AVX512 notice material missing') from exc
+    if (hashlib.sha256(source).hexdigest() != rule['source_archive_sha256']
+            or hashlib.sha256(header).hexdigest() != rule['header_sha256']
+            or hashlib.sha256(notice).hexdigest() != rule['notice_sha256']):
+        raise ValueError('AVX512 notice material mismatch')
+
+
 def validate_c5_review_overlay(artifacts: list, rule: dict, read_member) -> None:
     """Reject stale current C5 fields or an unbound bounded-review overlay."""
     matches = [row for row in artifacts if row.get('sha256') == rule['artifact_sha256']]

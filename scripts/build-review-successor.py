@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import io
 import subprocess
 import tempfile
 import zipfile
@@ -19,7 +20,7 @@ def encoded(value):
 
 def build(base, expected_base, repo, revision, release_id, output, installer,
           inventory_only=True, notice_only=False, c5_overlay_only=False,
-          current_state_only=False, provenance_only=False):
+          current_state_only=False, provenance_only=False, avx512_notice_only=False):
     if notice_only and not inventory_only:
         raise ValueError('C7 notice correction cannot refresh other review material')
     if c5_overlay_only and (not inventory_only or notice_only):
@@ -28,6 +29,8 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
         raise ValueError('C9 current-state correction cannot combine with other transformations')
     if provenance_only and (not inventory_only or notice_only or c5_overlay_only or current_state_only):
         raise ValueError('C10 provenance correction cannot combine with other transformations')
+    if avx512_notice_only and (not inventory_only or notice_only or c5_overlay_only or current_state_only or provenance_only):
+        raise ValueError('AVX512 notice correction cannot combine with other transformations')
     if output.exists() or installer.exists():
         raise ValueError('Refusing to replace immutable outputs')
     if sha(base.read_bytes()) != expected_base:
@@ -67,6 +70,8 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
             names+=('review-c5-current-state.json',)
         if current_state_only or provenance_only:
             names+=('review-c5-current-state.json','review-c7-current-state.json')
+        if avx512_notice_only:
+            names+=('review-avx512-notice.json',)
         source_hashes={}
         for name in names:
             data=committed(name); source_hashes[name]=sha(data)
@@ -124,7 +129,6 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
             module.refresh_packet_manifest(packet_manifest,lambda name: changes.get(name) or source.read(name))
             changes['notices-and-source/sbom-packet-manifest.json']=encoded(packet_manifest)
             # Preserve the exact app supplement while making the FlatBuffers route explicit.
-            import io
             app=next(p for p in legal['packages'] if p['normalized_name']=='autoclip')
             with zipfile.ZipFile(io.BytesIO(source.read('wheelhouse/'+app['filename']))) as wheel:
                 supplement=wheel.read('autoclip/assets/licenses/python-runtime-notices.txt')
@@ -287,6 +291,51 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
                 source_hashes[review_rule['review_source_path']]=sha(review_bytes)
             module.validate_c5_review_overlay(legal['external_assets'],c5_rule,source.read)
             module.validate_c7_review_overlay(legal['external_assets'],c7_rule,source.read)
+        if avx512_notice_only:
+            rule=json.loads(committed('review-avx512-notice.json'))
+            if rule.get('schema_version')!=1 or rule.get('component')!='simd-utils-avx512-mathfun':
+                raise ValueError('AVX512 notice rule differs')
+            source_archive=source.read(rule['source_archive_path'])
+            if sha(source_archive)!=rule['source_archive_sha256']:
+                raise ValueError('AVX512 source archive differs')
+            with zipfile.ZipFile(io.BytesIO(source_archive)) as nested:
+                if len(nested.namelist())!=len(set(nested.namelist())):
+                    raise ValueError('Duplicate CTranslate2 source members')
+                header=nested.read(rule['header_path'])
+            if sha(header)!=rule['header_sha256'] or b'SIMD_Utils' not in header or b'BSD-2' not in header:
+                raise ValueError('Selected AVX512 header differs')
+            notice=committed(rule['notice_source_path'])
+            if len(notice)!=rule['notice_bytes'] or sha(notice)!=rule['notice_sha256']:
+                raise ValueError('Pinned AVX512 notice differs')
+            if rule['notice_path'] in source.namelist():
+                raise ValueError('AVX512 notice would overwrite existing member')
+            source_hashes[rule['notice_source_path']]=sha(notice)
+            changes[rule['notice_path']]=notice
+            mapping=dict(component=rule['component'],version_scope=rule['version_scope'],
+                         source_archive_path=rule['source_archive_path'],
+                         source_archive_sha256=rule['source_archive_sha256'],
+                         header_path=rule['header_path'],header_sha256=rule['header_sha256'],
+                         license_expression='BSD-2-Clause',
+                         license_paths=[dict(path=rule['notice_path'],sha256=rule['notice_sha256'])],
+                         selected_build_scope=['CPU/default','optional NVIDIA'],
+                         source_evidence=dict(url=rule['upstream_license_url'],sha256=rule['notice_sha256']),
+                         fulfillment_status='exact_notice_delivered_focused_independent_review_pending')
+            legal.setdefault('recipient_built_components',[]).append(mapping)
+            legal.update(runtime_commit=revision,candidate_source_state='committed_runtime_source',
+                         native_build=dict(manifest['native_build']))
+            module.validate_avx512_notice_route(mapping,rule,
+                lambda name: changes.get(name) or source.read(name))
+            changes['notices-and-source/legal-index.json']=encoded(legal)
+            packet_manifest['files'].append(dict(path=rule['notice_path'],bytes=len(notice),sha256=sha(notice)))
+            packet_manifest['files'].sort(key=lambda row:row['path'])
+            packet_manifest['file_count']=len(packet_manifest['files'])
+            changes['notices-and-source/sbom-packet-manifest.json']=encoded(packet_manifest)
+            changes['notices-and-source/MANIFEST.md']=(source.read('notices-and-source/MANIFEST.md')+
+                ('\n\n## '+release_id+' AVX512 component notice\n\n'+
+                 'The recipient-built CTranslate2 CPU/default and optional NVIDIA paths compile '+
+                 '`third_party/avx512_mathfun.h`. Its distinct SIMD_Utils BSD-2 notice is at `'+
+                 rule['notice_path']+'`. `legal-index.json` binds the notice to the exact archived '+
+                 'header and source archive. Focused independent disposition remains pending.\n').encode())
         provenance=json.loads(source.read('notices-and-source/build-provenance.json'))
         provenance.update(runtime_commit=revision,source_state='committed_runtime_source',construction_base_archive_sha256=expected_base,committed_source_sha256=source_hashes)
         if inventory_only:
@@ -319,6 +368,12 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
                     'focused independent successor disposition pending')
                 provenance['c10_c5_review_rule_sha256']=sha(committed('review-c5-current-state.json'))
                 provenance['c10_c7_review_rule_sha256']=sha(committed('review-c7-current-state.json'))
+            if avx512_notice_only:
+                provenance['reviewed_material_carry_forward']['scope']=(
+                    'Unchanged app, native recipe, wheels, source archives, existing legal notices, SBOM declarations and prerequisite terms; '
+                    'only the distinct AVX512 BSD-2 notice, its legal/recipient mapping and dependent metadata added; '
+                    'focused independent successor disposition pending')
+                provenance['avx512_notice_rule_sha256']=sha(committed('review-avx512-notice.json'))
         changes['notices-and-source/build-provenance.json']=encoded(provenance)
         if not inventory_only:
             changes['notices-and-source/MANIFEST.md']=source.read('notices-and-source/MANIFEST.md')+f'\n\n## {release_id}\n\nCurrent runtime source `{revision}`. Current source snapshots are under build-provenance/current. Earlier snapshots retain historical scope. Review metadata and prerequisite consent corrected; independent final disposition pending.\n'.encode()
@@ -374,6 +429,13 @@ def build(base, expected_base, repo, revision, release_id, output, installer,
             module.validate_c5_review_source_provenance(
                 json.loads(target.read('notices-and-source/build-provenance.json')),
                 c5_rule,target.read,committed)
+        if avx512_notice_only:
+            final_legal=json.loads(target.read('notices-and-source/legal-index.json'))
+            rows=[row for row in final_legal.get('recipient_built_components',[])
+                  if row.get('component')==rule['component']]
+            if len(rows)!=1:
+                raise ValueError('AVX512 legal mapping missing or duplicated')
+            module.validate_avx512_notice_route(rows[0],rule,target.read)
         for row in packet_manifest['files']:
             raw=target.read(row['path'])
             if len(raw)!=row['bytes'] or sha(raw)!=row['sha256']:
@@ -394,10 +456,12 @@ if __name__=='__main__':
     p.add_argument('--apply-c8-c5-overlay',action='store_true',help='Correct only the current C5 GCC-row review metadata')
     p.add_argument('--apply-c9-current-state',action='store_true',help='Correct stale current C7 status and GCC version wording')
     p.add_argument('--apply-c10-provenance',action='store_true',help='Restore C5 source association and pin bounded review scopes')
+    p.add_argument('--apply-avx512-notice',action='store_true',help='Add the distinct pinned SIMD_Utils AVX512 recipient notice')
     a=p.parse_args()
     print(json.dumps(build(a.base,a.expected_base,a.repo,a.revision,a.release_id,a.output,a.installer,
                           inventory_only=not a.refresh_review_material,
                           notice_only=a.apply_c7_notices,
                           c5_overlay_only=a.apply_c8_c5_overlay,
                           current_state_only=a.apply_c9_current_state,
-                          provenance_only=a.apply_c10_provenance),indent=2))
+                          provenance_only=a.apply_c10_provenance,
+                          avx512_notice_only=a.apply_avx512_notice),indent=2))

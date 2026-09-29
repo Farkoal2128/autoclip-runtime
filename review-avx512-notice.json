@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "component": "simd-utils-avx512-mathfun",
+  "version_scope": "SIMD_Utils 0.2.5 as identified by the exact CTranslate2 v4.8.2 archived header",
+  "source_archive_path": "notices-and-source/source-and-build/ctranslate2-v4.8.2-source.zip",
+  "source_archive_sha256": "1ccd140be6bd245d9c32cb072d7b803d5af89d20f609e997bb231fdd21e7d41c",
+  "header_path": "third_party/avx512_mathfun.h",
+  "header_sha256": "2f4df9f0711014ee18b1e0bf314d21bf61d21e0a8175f9bc1cb67af3f05ebc79",
+  "notice_source_path": "review-component-evidence/simd-utils-b3f3e45-LICENSE",
+  "notice_path": "notices-and-source/candidate-native-notices/simd-utils-avx512-mathfun-BSD-2.txt",
+  "notice_bytes": 1322,
+  "notice_sha256": "dfaa54b4188ffa0e6298ce7ea27c865d12edcf73d742e2200ce9812db6268c0f",
+  "upstream_license_url": "https://raw.githubusercontent.com/JishinMaster/simd_utils/b3f3e45d9fa6356fd1eb5071d361c92c864182f2/LICENSE"
+}
