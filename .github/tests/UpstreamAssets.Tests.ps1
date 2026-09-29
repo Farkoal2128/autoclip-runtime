@@ -9,8 +9,7 @@ try {
     $hash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
     $destination = Join-Path $fixture 'cache\publisher.bin'
     $calls = [pscustomobject]@{ Count = 0 }
-    $payload = [IO.File]::ReadAllBytes($source)
-    $download = { param($uri, $path) $calls.Count++; [IO.File]::WriteAllBytes($path, $payload) }.GetNewClosure()
+    $download = { param($uri, $path) $calls.Count++; Copy-Item -LiteralPath $source -Destination $path }.GetNewClosure()
     $result = Get-PinnedUpstreamAsset -Uri 'https://example.test/publisher.bin' -Sha256 $hash -Size (Get-Item $source).Length -Destination $destination -DownloadScript $download
     if ($result -ne $destination -or $calls.Count -ne 1) { throw 'First verified download did not use the pinned destination.' }
     $result = Get-PinnedUpstreamAsset -Uri 'https://example.test/publisher.bin' -Sha256 $hash -Size (Get-Item $source).Length -Destination $destination -DownloadScript $download
