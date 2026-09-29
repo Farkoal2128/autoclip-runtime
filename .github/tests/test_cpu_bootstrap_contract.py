@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class CpuBootstrapContractTests(unittest.TestCase):
     def test_installer_provisions_and_validates_native_tools(self) -> None:
-        installer = (ROOT / "install-source-build.ps1").read_text(encoding="utf-8")
+        installer = (ROOT / "release" / "scripts" / "install-source-build.ps1").read_text(encoding="utf-8")
         for item in (
             "MSYS2.MSYS2",
             "20260611",
@@ -32,14 +32,14 @@ class CpuBootstrapContractTests(unittest.TestCase):
         self.assertIn("Join-Path $_.FullName 'um\\Windows.h'", installer)
 
     def test_cpu_receipt_records_profile_and_build_inputs(self) -> None:
-        builder = (ROOT / "build-native-from-source.ps1").read_text(encoding="utf-8")
+        builder = (ROOT / "release" / "scripts" / "build-native-from-source.ps1").read_text(encoding="utf-8")
         self.assertIn("profile = if ($InstallNvidiaGpu) { 'nvidia' } else { 'cpu' }", builder)
         self.assertIn("build_prerequisites", builder)
         self.assertIn("cmake_arguments", builder)
         self.assertIn("$windowsTar = Join-Path $env:SystemRoot 'System32\\tar.exe'", builder)
 
     def test_onednn_documentation_probe_uses_controlled_python(self) -> None:
-        builder = (ROOT / "build-native-from-source.ps1").read_text(encoding="utf-8")
+        builder = (ROOT / "release" / "scripts" / "build-native-from-source.ps1").read_text(encoding="utf-8")
         onednn_configure = next(
             line for line in builder.splitlines() if "Invoke-Checked $cmake @('-S', $oneDnnSource" in line
         )

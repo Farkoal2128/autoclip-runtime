@@ -34,8 +34,8 @@ def main() -> None:
     app_wheel_name = "wheelhouse/autoclip-0.1.0.dev0-py3-none-any.whl"
     replacements = {
         app_wheel_name: args.app_wheel.read_bytes(),
-        "build-native-from-source.ps1": committed(runtime, runtime_commit, "build-native-from-source.ps1"),
-        "cuda-prerequisites.ps1": committed(runtime, runtime_commit, "cuda-prerequisites.ps1"),
+        "build-native-from-source.ps1": committed(runtime, runtime_commit, "release/scripts/build-native-from-source.ps1"),
+        "cuda-prerequisites.ps1": committed(runtime, runtime_commit, "release/scripts/cuda-prerequisites.ps1"),
     }
     with zipfile.ZipFile(args.v22) as source:
         manifest = json.loads(source.read("release-manifest.json"))
@@ -109,9 +109,9 @@ def main() -> None:
     temporary.replace(args.archive)
     archive_sha = sha(args.archive.read_bytes())
     manifest_sha = sha(manifest_bytes)
-    installer = committed(runtime, runtime_commit, "install-source-build.ps1").decode()
-    helper = committed(runtime, runtime_commit, "cuda-prerequisites.ps1").decode()
-    upstream = committed(runtime, runtime_commit, "upstream-assets.ps1").decode()
+    installer = committed(runtime, runtime_commit, "release/scripts/install-source-build.ps1").decode()
+    helper = committed(runtime, runtime_commit, "release/scripts/cuda-prerequisites.ps1").decode()
+    upstream = committed(runtime, runtime_commit, "release/scripts/upstream-assets.ps1").decode()
     installer = installer.replace(". (Join-Path $PSScriptRoot 'cuda-prerequisites.ps1')", "# CUDA helper is embedded in this standalone local installer.")
     installer = installer.replace(
         "$ErrorActionPreference = 'Stop'",

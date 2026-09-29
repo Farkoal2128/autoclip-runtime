@@ -1,5 +1,5 @@
 $ErrorActionPreference='Stop'
-. (Join-Path $PSScriptRoot '..\prerequisite-terms.ps1')
+. (Join-Path $PSScriptRoot '..\release\scripts\prerequisite-terms.ps1')
 $root=Join-Path $env:TEMP ('autoclip-terms-test-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $root | Out-Null
 try {

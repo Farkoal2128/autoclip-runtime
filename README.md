@@ -53,10 +53,15 @@ The reviewed v40 ZIP SHA-256 is `f2b3be779294bc55d6f5f56c2a780a2d6b863486f3af9bd
 
 ## Repository layout
 
-- Root `install.ps1`, `update.ps1`, `update-app.ps1`, and `Start-AutoClip.ps1` are public entrypoints or launcher files and retain stable URLs.
-- Root build and prerequisite PowerShell files, `publisher-wheel-inputs.json`, `source-artifact-inputs.json`, and `prerequisite-terms.json` are operative source-build inputs. Their paths are consumed by the release recipe and are kept stable.
-- Root `review-*.json` files and `review-component-evidence/` are hash-bound review inputs used by the successor builder. Moving or deleting them would change build provenance.
-- `scripts/` contains build and audit tools; `.github/` contains CI and release checks; `tests/` contains local prerequisite tests; `docs/` contains architecture, acquisition, and historical release records.
+The repository root is intentionally limited to the stable public entrypoints and high-level project folders:
+
+- `install.ps1`, `update.ps1`, `update-app.ps1`, `Start-AutoClip.ps1`, and `app-release.json` keep their stable public locations.
+- `release/scripts/` contains source-build installers, prerequisite helpers, cache tooling, and native-build recipes that are packaged into release artifacts.
+- `release/manifests/` contains repository-side publisher/source input manifests.
+- `release/review/` contains hash-bound review rules, third-party review material, and component evidence used by successor builds.
+- `scripts/` contains release-construction and audit tooling; `.github/` contains CI and release checks; `tests/` contains local prerequisite tests; `docs/` contains architecture, acquisition, and historical release records.
+
+Generated source-build archives keep their established root-level filenames. The release tooling resolves those logical names from `release/`, so this repository cleanup does not change the published v40 asset, public installer pins, or installed layout.
 
 The Git tag for v40 preserves the published source snapshot. A later `main` commit corrected the app-manifest digest expected by the public updater; use the current `main` updater. The ZIP asset and its reviewed bytes did not change.
 

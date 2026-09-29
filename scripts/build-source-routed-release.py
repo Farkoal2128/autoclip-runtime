@@ -194,7 +194,7 @@ def attach_review_index(wheels: list[Path], source: Path, target: Path) -> None:
 
 def normalize_license_row(row: dict, read_member) -> None:
     """Normalize only reviewed exact legal bytes; retain original metadata."""
-    rules = json.loads((Path(__file__).resolve().parents[1] / 'review-license-normalization.json').read_text(encoding='utf-8'))
+    rules = json.loads((Path(__file__).resolve().parents[1] / 'release' / 'review' / 'review-license-normalization.json').read_text(encoding='utf-8'))
     if rules.get('schema_version') != 1:
         raise ValueError('Unsupported license normalization evidence')
     matches = [r for r in rules['packages'] if r['normalized_name'] == row.get('normalized_name') and r['version'] == row.get('version')]
@@ -501,7 +501,7 @@ def build_publisher_routed_release(source: Path, target: Path, pins: Path,
 
     repository = Path(__file__).resolve().parents[1]
     for name in ("upstream-assets.ps1", "Prepare-AutoClipOfflineCache.ps1"):
-        shutil.copy2(repository / name, target / name)
+        shutil.copy2(repository / "release" / "scripts" / name, target / name)
 
     index_path = target / "notices-and-source" / "legal-index.json"
     if index_path.exists():
@@ -566,7 +566,7 @@ def build_publisher_routed_release(source: Path, target: Path, pins: Path,
                 row["review_disposition"] = "Silero model identity and MIT notice preserved"
         index_path.write_text(json.dumps(index, indent=2) + "\n", encoding="utf-8")
     if any(item["package"] == "faster-whisper" for item in entries):
-        notice = Path(__file__).resolve().parents[1] / "silero-vad-v6-LICENSE"
+        notice = Path(__file__).resolve().parents[1] / "release" / "review" / "silero-vad-v6-LICENSE"
         if hashlib.sha256(notice.read_bytes()).hexdigest() != "2e63e9a38b6e8fc0c7bc37ce174caca1862870856c6daf5697cfb785e925520b":
             raise ValueError("Silero MIT notice differs from pinned v6.0 source")
         destination = target / "notices-and-source" / "models" / notice.name
@@ -694,10 +694,10 @@ def build_release(source: Path, target: Path, *, build_native_from_source: bool 
         else:
             shutil.copy2(file, destination)
     repository = Path(__file__).resolve().parents[1]
-    shutil.copy2(repository / "upstream-assets.ps1", target / "upstream-assets.ps1")
+    shutil.copy2(repository / "release" / "scripts" / "upstream-assets.ps1", target / "upstream-assets.ps1")
     if build_native_from_source:
         for name in ("build-native-from-source.ps1", "build-v11-codec-free-ffmpeg.sh"):
-            shutil.copy2(repository / name, target / name)
+            shutil.copy2(repository / "release" / "scripts" / name, target / name)
         shutil.copy2(repository / "scripts" / "verify-native-source-wheels.py", target / "verify-native-source-wheels.py")
         shutil.copy2(repository / "scripts" / "verify-install-wheels.py", target / "verify-install-wheels.py")
     sidecar = target / "notices-and-source" / "MANIFEST.md"
@@ -765,7 +765,7 @@ def build_release(source: Path, target: Path, *, build_native_from_source: bool 
     if source_cache_dir:
         if not build_native_from_source:
             raise ValueError("Source artifact cache is defined for the recipient source-build profile")
-        attach_source_artifacts(Path(__file__).resolve().parents[1] / "source-artifact-inputs.json", source_cache_dir, target)
+        attach_source_artifacts(Path(__file__).resolve().parents[1] / "release" / "manifests" / "source-artifact-inputs.json", source_cache_dir, target)
     files = []
     for file in sorted(target.rglob("*")):
         if file.is_file():

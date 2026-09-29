@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-. (Join-Path (Split-Path -Parent $PSScriptRoot) '..\native-wheel-cache.ps1')
+. (Join-Path (Split-Path -Parent $PSScriptRoot) '..\release\scripts\native-wheel-cache.ps1')
 
 $scratch = Join-Path $env:TEMP ('autoclip-native-cache-test-' + [guid]::NewGuid().ToString('N'))
 $buildRoot = Join-Path $scratch 'build'

@@ -54,7 +54,7 @@ its v9 predecessor passed updater receipt and
 rollback/reselection checks. Public release still requires
 clean-machine prerequisite/download checks and independent exact-delivery
 review.
-The local candidate installer is `install-source-build.ps1`; it takes an exact
+The local candidate installer is `release/scripts/install-source-build.ps1`; it takes an exact
 `-ArchivePath`, and can take `-MsysBash`, `-CudaRoot`, `-ExternalCache` and
 `-NativeBuildRoot` for a prepared Windows toolchain and resumable builds.
 For the next candidate, the default source build is CPU capable without CUDA

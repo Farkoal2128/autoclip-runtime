@@ -10,8 +10,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class OptionalNvidiaSourceBuildTests(unittest.TestCase):
     def test_cpu_default_and_explicit_nvidia_mode(self) -> None:
-        installer = (ROOT / "install-source-build.ps1").read_text(encoding="utf-8")
-        builder = (ROOT / "build-native-from-source.ps1").read_text(encoding="utf-8")
+        installer = (ROOT / "release" / "scripts" / "install-source-build.ps1").read_text(encoding="utf-8")
+        builder = (ROOT / "release" / "scripts" / "build-native-from-source.ps1").read_text(encoding="utf-8")
         updater = (ROOT / "update.ps1").read_text(encoding="utf-8")
 
         self.assertRegex(installer, r"\[switch\]\$InstallNvidiaGpu")

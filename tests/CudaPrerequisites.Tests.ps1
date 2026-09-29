@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot '..\cuda-prerequisites.ps1')
+. (Join-Path $PSScriptRoot '..\release\scripts\cuda-prerequisites.ps1')
 # Provisioning behavior fixture: consent is tested independently; no real vendor acceptance.
 function Confirm-PrerequisiteTerms { }
 
