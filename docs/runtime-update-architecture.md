@@ -1,9 +1,11 @@
 # Runtime and application update architecture
 
-Status: architecture contract. The current V11 full installer still installs
-a complete 79-wheel environment into each versioned release directory. The
-CR-11 app-only updater is published for application updates on the compatible
-V11 runtime; the fully separated runtime layout below remains a target design.
+Status: architecture contract. The current Windows source-build v40 installer
+uses a versioned release directory, builds the native runtime on the recipient
+machine, and keeps CPU as the default with optional NVIDIA. The CR-11 app-only
+updater accepts exact compatible runtime identities, including v40. The fully
+separated runtime layout below remains a target design. Archived V11 releases
+retain their historical complete-environment behavior.
 
 ## Layers and identity
 
