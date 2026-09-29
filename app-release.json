@@ -7,6 +7,10 @@
     {
       "release_id": "v11-20260926-notice-correction",
       "manifest_sha256": "ccf6785596fb8dcff906175534d529c1c1b66e81a87eb9c99e0a05b635c84fee"
+    },
+    {
+      "release_id": "v11-20260928-source-build-candidate-v40-provenance-continuity",
+      "manifest_sha256": "7fbf72038be30522bc176002082fddd92fd4e057159765726e77806a296658e2"
     }
   ],
   "wheel_url": "https://github.com/Farkoal2128/autoclip-runtime/releases/download/v0.1.0-dev0-windows-app-20260926-cr11/autoclip-0.1.0.dev0-py3-none-any.whl",
