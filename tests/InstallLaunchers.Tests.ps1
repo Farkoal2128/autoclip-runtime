@@ -37,8 +37,12 @@ try {
     foreach ($path in @($folderLink, $desktopLink)) {
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Launcher is missing: $path" }
         $link = (New-Object -ComObject WScript.Shell).CreateShortcut($path)
-        if ($link.TargetPath -ne $pythonw -or $link.Arguments -ne '-m autoclip.desktop' -or
-            $link.WorkingDirectory -ne $install) {
+        $resolvedTarget = (Get-Item -LiteralPath $link.TargetPath).FullName
+        $resolvedPythonw = (Get-Item -LiteralPath $pythonw).FullName
+        $resolvedWorkingDirectory = (Get-Item -LiteralPath $link.WorkingDirectory).FullName
+        $resolvedInstall = (Get-Item -LiteralPath $install).FullName
+        if ($resolvedTarget -ne $resolvedPythonw -or $link.Arguments -ne '-m autoclip.desktop' -or
+            $resolvedWorkingDirectory -ne $resolvedInstall) {
             throw "Launcher does not target the installed AutoClip desktop entry: $path"
         }
     }
