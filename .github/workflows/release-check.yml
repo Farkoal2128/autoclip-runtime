@@ -49,6 +49,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          ./tests/InlineInstaller.Tests.ps1
           ./tests/PrerequisiteConsent.Tests.ps1
           ./tests/PrerequisiteTerms.Tests.ps1
           ./tests/CudaPrerequisites.Tests.ps1

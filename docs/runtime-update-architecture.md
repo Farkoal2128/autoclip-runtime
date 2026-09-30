@@ -157,3 +157,7 @@ agreement acceptance. Equivalence of downloaded reference terms to exact install
 terms remains a reviewer question, and the native agreement is still presented.
 No automatic script or test may provide a real recipient's acceptance without
 their authorization.
+The documented `irm .../install.ps1 | iex` bootstrap has no script-root path.
+Its consent helper must use the hash-checked embedded terms without evaluating
+a path-relative default. Saved-script execution may use an explicit terms
+manifest path when embedded terms are unavailable.
