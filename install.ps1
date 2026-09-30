@@ -396,6 +396,46 @@ function Update-ProcessPath {
 }
 Update-ProcessPath
 
+function Install-AutoClipLaunchers {
+    param(
+        [Parameter(Mandatory)][string]$InstallRoot,
+        [string]$DesktopDirectory = [Environment]::GetFolderPath('DesktopDirectory')
+    )
+    $root = [IO.Path]::GetFullPath($InstallRoot)
+    $pythonw = Join-Path $root '.venv\Scripts\pythonw.exe'
+    $script = Join-Path $root 'Start-AutoClip.ps1'
+    if (-not (Test-Path -LiteralPath $pythonw -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $script -PathType Leaf)) {
+        throw 'Verified AutoClip launcher inputs are missing from the install folder.'
+    }
+
+    $folderLink = Join-Path $root 'AutoClip.lnk'
+    $shell = New-Object -ComObject WScript.Shell
+    $link = $shell.CreateShortcut($folderLink)
+    $link.TargetPath = $pythonw
+    $link.Arguments = '-m autoclip.desktop'
+    $link.WorkingDirectory = $root
+    $link.Description = 'Start AutoClip'
+    $link.Save()
+    Write-Host "Install-folder launcher: $folderLink"
+
+    if (-not $DesktopDirectory -or -not (Test-Path -LiteralPath $DesktopDirectory -PathType Container)) {
+        Write-Warning 'Windows Desktop folder is unavailable; the install-folder launcher is ready.'
+        return
+    }
+    $desktopLink = Join-Path $DesktopDirectory 'AutoClip.lnk'
+    if (Test-Path -LiteralPath $desktopLink) {
+        Write-Host "Existing desktop shortcut preserved: $desktopLink"
+        return
+    }
+    try {
+        [IO.File]::Copy($folderLink, $desktopLink, $false)
+        Write-Host "Desktop shortcut: $desktopLink"
+    } catch {
+        Write-Warning "Could not create the desktop shortcut: $($_.Exception.Message). Use $folderLink."
+    }
+}
+
 function Install-WingetPackage([string]$Package, [string]$Version, [string]$Override = '') {
     if ($Package -eq 'Microsoft.VisualStudio.2022.BuildTools') {
         Confirm-PrerequisiteTerms -Id build-tools -ReceiptRoot $publisherCache -Accepted:$AcceptMicrosoftTerms -NonInteractive:$NonInteractive
@@ -694,6 +734,11 @@ try {
     $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $receiptPath -Encoding UTF8
 
     [IO.File]::WriteAllText((Join-Path $InstallRoot '.install-complete'), $expectedArchiveSha256)
+    try {
+        Install-AutoClipLaunchers -InstallRoot $InstallRoot
+    } catch {
+        Write-Warning "Could not create a double-click launcher: $($_.Exception.Message). Use Start-AutoClip.ps1 in $InstallRoot."
+    }
 
     Write-Host "AutoClip installed at $InstallRoot"
     Write-Host "Run: & '$(Join-Path $InstallRoot 'Start-AutoClip.ps1')'"

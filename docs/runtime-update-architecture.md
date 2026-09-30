@@ -16,6 +16,11 @@ contains Python, shared Python packages, native dependencies such as PyAV and
 CTranslate2, CUDA libraries, and runtime-owned notices/source material. An app
 release contains the AutoClip package, compiled frontend, app-owned notices,
 and app metadata. Code or UI changes normally produce only an app asset.
+After a successful fresh install, provide a double-click launcher inside the
+versioned install folder. Create `AutoClip.lnk` on the user's Desktop when that
+name is unused; preserve an existing shortcut rather than redirecting another
+installation. Both links start the verified local AutoClip desktop entry point
+without rebuilding or downloading another runtime.
 
 The conceptual managed layout is:
 

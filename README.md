@@ -21,7 +21,7 @@ $installer = irm https://raw.githubusercontent.com/Farkoal2128/autoclip-runtime/
 
 NVIDIA CUDA/cuBLAS inputs are acquired directly by the recipient under their applicable terms. AutoClip does not bundle, mirror, or distribute populated shared-cache copies of Microsoft or NVIDIA prerequisites. A supported NVIDIA driver is needed for GPU inference. CPU installation does not require the NVIDIA profile.
 
-The default versioned install directory is under `%LOCALAPPDATA%\AutoClip`. The installer prints its exact launch command on success. `install.ps1 -ReleaseInfo` reports the public release ID, URL, archive digest, and manifest digest without installing. A completed installation is kept separate from earlier versions.
+The default versioned install directory is under `%LOCALAPPDATA%\AutoClip`. After a successful install, double-click `AutoClip.lnk` in the printed install folder. The installer also creates `AutoClip.lnk` on your Desktop if that name is available; it preserves an existing shortcut. The original `Start-AutoClip.ps1` remains in the install folder and the installer prints the PowerShell command to run it. `install.ps1 -ReleaseInfo` reports the public release ID, URL, archive digest, and manifest digest without installing. A completed installation is kept separate from earlier versions.
 
 ## Update and rollback
 
