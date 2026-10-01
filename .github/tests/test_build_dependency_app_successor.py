@@ -490,6 +490,9 @@ class DependencyAppBuilderTest(unittest.TestCase):
                 "    if (-not $ArchivePath) {\n"
                 "    $actualArchiveSha256 = (Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash.ToLowerInvariant()\n"
                 "    & (Join-Path $InstallRoot 'Prepare-AutoClipOfflineCache.ps1') -ManifestPath $manifestPath -CacheRoot $publisherCache -StageWheelhouse $externalWheels -Offline:$OfflinePublisherCache -InstallNvidiaGpu:$InstallNvidiaGpu\n"
+                "    if ($resumeIncomplete -and (Test-Path -LiteralPath $venv)) {\n"
+                "        $venvOptions += '--clear'\n"
+                "    }\n"
                 "    & $uv.Source venv @venvOptions --python 3.11 $venv\n"
                 "        $NativeBuildRoot = Join-Path $ExternalCache \"native-build-v11-20260926-$buildProfile\"\n"
                 "    & (Join-Path $InstallRoot 'build-native-from-source.ps1') -BuildRoot $NativeBuildRoot -Wheelhouse $externalWheels -OpenBlasArchive $openblasArchive -MsysBash $MsysBash -CudaRoot $CudaRoot -InstallNvidiaGpu:$InstallNvidiaGpu -Python $python -Uv $uv.Source\n"
@@ -580,6 +583,7 @@ class DependencyAppBuilderTest(unittest.TestCase):
             self.assertNotIn(b"Register-ObjectEvent", standalone)
             self.assertIn(b"Write-Progress -Id 1 -Activity 'AutoClip installation'", standalone)
             self.assertIn(b"Write-Progress -Id 2 -Activity 'Native source build'", standalone)
+            self.assertIn(b"$venvOptions += @('--clear', '--force')", standalone)
             self.assertIn(b"} finally {\r\n    Write-Progress -Id 1 -Activity 'AutoClip installation' -Completed", standalone)
             successor_standalone = module._standalone_from_base(
                 base_installer.read_bytes(), base_hash,

@@ -300,7 +300,7 @@ try {
     $venv = Join-Path $InstallRoot '.venv'
     $venvOptions = @()
     if ($resumeIncomplete -and (Test-Path -LiteralPath $venv)) {
-        $venvOptions += '--clear'
+        $venvOptions += @('--clear', '--force')
     }
     & $uv.Source venv @venvOptions --python 3.11 $venv
     if ($LASTEXITCODE -ne 0) {

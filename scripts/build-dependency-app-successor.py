@@ -428,6 +428,11 @@ def _standalone_from_base(base_raw, old_archive, old_manifest, old_id,
         template = template.replace(old, new, 1)
     if template.count(NATIVE_BUILD_CALL) != 1:
         raise ValueError("Base standalone native-build call differs")
+    old_retry = "$venvOptions += '--clear'"
+    if template.count(old_retry) != 1:
+        raise ValueError("Base standalone virtual-environment retry differs")
+    template = template.replace(old_retry,
+                                "$venvOptions += @('--clear', '--force')", 1)
     progress = (
         "    Write-Progress -Activity 'AutoClip installation' -Status 'Building native runtime' -PercentComplete 55\n"
         "    Write-Progress -Activity 'Native source build' -Status 'Starting compiler.'\n"
