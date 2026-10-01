@@ -155,6 +155,13 @@ successor receives its own disposition; carrying focused R02/R03 and r17/r18
 decisions by hash does not authorize publication. The disabled archive-root
 installer stub is historical; only the separately pinned standalone is an
 entry point.
+An app-only wheel change that must appear on clean install requires a new
+immutable runtime archive. Keep the publisher and external selections, native
+build inputs and prior scoped decisions unchanged; replace the app wheel,
+its legal sidecars and exact source association, then rehash both manifests.
+Record a new review-pending status and standalone pins. Historical local-test
+and builder-provenance fields retain their original scope; a focused wheel
+review alone does not approve the new runtime archive or publication.
 The dependency-and-app successor uses a native cache key from the pinned native
 build script and build inputs, plus the CPU/NVIDIA profile. Changing only the
 release ID or notices retains the key; a changed native input selects a new
