@@ -147,6 +147,14 @@ A successor that adds a publisher wheel requires an exact attributable review
 packet. Final component plan/index rows must agree on nonempty installed legal
 paths that are present in the delivered wheel or source notice set. This checks
 recipient mapping; the review still decides which notice applies to each component.
+An r18 metadata successor records current status separately under
+`notices-and-source/review/current-successor-status.json`. Its r18 legal,
+provenance and dependency-review fields retain their historical local-test
+scope. The new status is `UNPUBLISHABLE_REVIEW_PENDING` until the exact
+successor receives its own disposition; carrying focused R02/R03 and r17/r18
+decisions by hash does not authorize publication. The disabled archive-root
+installer stub is historical; only the separately pinned standalone is an
+entry point.
 The dependency-and-app successor uses a native cache key from the pinned native
 build script and build inputs, plus the CPU/NVIDIA profile. Changing only the
 release ID or notices retains the key; a changed native input selects a new
