@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "scope": "Producer evidence only for likely Pillow 12.3.0 Windows x64 child components; no legal clearance or complete-source claim",
+  "components": [
+    {
+      "name": "AOM",
+      "source_ref": "aom refs/tags/v3.14.1",
+      "source_url": "https://aomedia.googlesource.com/aom/+/refs/tags/v3.14.1/LICENSE?format=TEXT",
+      "role": "AV1 encoder for libavif",
+      "likely_scope": "AVIF encoding; exact incorporation and shipped source scope remain unverified",
+      "notices": [
+        {
+          "path": "AOM-3.14.1-LICENSE",
+          "sha256": "4764a286d8b2faeaf42f4418e7d7a28d58fc8fd4d00a3d0a7f44b0a4099de7f2"
+        },
+        {
+          "path": "AOM-3.14.1-PATENTS",
+          "sha256": "661fb8e504744e95587b556b94a58343448300606a41bea8c7a9b97125696e61"
+        }
+      ],
+      "review_state": "unresolved"
+    },
+    {
+      "name": "dav1d",
+      "source_ref": "dav1d refs/tags/1.5.3",
+      "source_url": "https://raw.githubusercontent.com/videolan/dav1d/1.5.3/COPYING",
+      "role": "AV1 decoder for libavif",
+      "likely_scope": "AVIF decoding; exact incorporation and shipped source scope remain unverified",
+      "notices": [
+        {
+          "path": "dav1d-1.5.3-COPYING",
+          "sha256": "dd92c3c2247c5651606fc23a5e2d6a1ebc5ace9a3e49cbde0e12f05ad1cb1ee5"
+        }
+      ],
+      "review_state": "unresolved"
+    },
+    {
+      "name": "libyuv",
+      "source_ref": "libyuv commit 644251f252a84bf8ce91ff0aca86a9b16b069ab8",
+      "source_url": "https://chromium.googlesource.com/libyuv/libyuv/+/644251f252a84bf8ce91ff0aca86a9b16b069ab8/LICENSE?format=TEXT",
+      "role": "libavif image conversion and scaling support",
+      "likely_scope": "Possible AVIF color conversion and scaling paths; exact incorporation and shipped source scope remain unverified",
+      "notices": [
+        {
+          "path": "libyuv-644251f-LICENSE",
+          "sha256": "2b2cc1180c7e6988328ad2033b04b80117419db9c4c584918bbb3cfec7e9364f"
+        }
+      ],
+      "review_state": "unresolved"
+    },
+    {
+      "name": "libsharpyuv",
+      "source_ref": "libwebp refs/tags/v1.6.0, sharpyuv source",
+      "source_url": "https://chromium.googlesource.com/webm/libwebp/+/refs/tags/v1.6.0/COPYING?format=TEXT",
+      "build_reference": "https://aomedia.googlesource.com/libavif/+/286f1b9a66e7f05ac5a32510e4c08ecd03f0ba0f/CMakeLists.txt",
+      "role": "AVIF RGB-to-YUV conversion through libavif AVIF_LIBSHARPYUV=LOCAL",
+      "likely_scope": "libavif AVIF encoding color-conversion path; exact incorporation and shipped source scope remain unverified",
+      "notices": [
+        {
+          "path": "libwebp-1.6.0-COPYING",
+          "sha256": "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf"
+        },
+        {
+          "path": "libwebp-1.6.0-PATENTS",
+          "sha256": "cc3273e0694ea5896145e0677699b53471b03ea43021ddc50e7923fbb9f5023c"
+        }
+      ],
+      "review_state": "unresolved"
+    }
+  ]
+}

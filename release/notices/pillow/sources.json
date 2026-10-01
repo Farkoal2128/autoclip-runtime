@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "scope": "Pillow 12.3.0 Windows x64 candidate notice inputs; component fulfillment pending",
+  "files": [
+    {
+      "path": "AOM-3.14.1-LICENSE",
+      "url": "https://aomedia.googlesource.com/aom/+/refs/tags/v3.14.1/LICENSE?format=TEXT",
+      "sha256": "4764a286d8b2faeaf42f4418e7d7a28d58fc8fd4d00a3d0a7f44b0a4099de7f2"
+    },
+    {
+      "path": "AOM-3.14.1-PATENTS",
+      "url": "https://aomedia.googlesource.com/aom/+/refs/tags/v3.14.1/PATENTS?format=TEXT",
+      "sha256": "661fb8e504744e95587b556b94a58343448300606a41bea8c7a9b97125696e61"
+    },
+    {
+      "path": "dav1d-1.5.3-COPYING",
+      "url": "https://raw.githubusercontent.com/videolan/dav1d/1.5.3/COPYING",
+      "sha256": "dd92c3c2247c5651606fc23a5e2d6a1ebc5ace9a3e49cbde0e12f05ad1cb1ee5"
+    },
+    {
+      "path": "libyuv-644251f-LICENSE",
+      "url": "https://chromium.googlesource.com/libyuv/libyuv/+/644251f252a84bf8ce91ff0aca86a9b16b069ab8/LICENSE?format=TEXT",
+      "sha256": "2b2cc1180c7e6988328ad2033b04b80117419db9c4c584918bbb3cfec7e9364f"
+    },
+    {
+      "path": "libwebp-1.6.0-COPYING",
+      "url": "https://chromium.googlesource.com/webm/libwebp/+/refs/tags/v1.6.0/COPYING?format=TEXT",
+      "sha256": "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf"
+    },
+    {
+      "path": "libwebp-1.6.0-PATENTS",
+      "url": "https://chromium.googlesource.com/webm/libwebp/+/refs/tags/v1.6.0/PATENTS?format=TEXT",
+      "sha256": "cc3273e0694ea5896145e0677699b53471b03ea43021ddc50e7923fbb9f5023c"
+    },
+    {
+      "path": "ACKNOWLEDGEMENTS.md",
+      "source": "cr09-v41-pillow-acknowledgements-proposed.md",
+      "sha256": "e47ab61c6efbe129ece9b2ebf77dd6ba320bc73c00e2d5e5a084401a0a95a235"
+    },
+    {
+      "path": "fribidi-shim-NOTICE.md",
+      "source": "AutoClip factual shim mapping from the exact Pillow 12.3.0 SBOM and sdist",
+      "sha256": "415b14ea7d46aabe028416c40f777a6aa3237f2560e2f7e681fa86c10f5b8d73"
+    },
+    {
+      "path": "components.json",
+      "source": "AutoClip producer inventory of likely Pillow 12.3.0 child-component inputs; review unresolved",
+      "sha256": "584161478047904c1ebf09aedac2a5e70b0d95ed046a35f71d588183ed5b8e16"
+    }
+  ]
+}

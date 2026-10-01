@@ -167,6 +167,38 @@ if missing:
     }
 }
 
+function Assert-AppDatabaseCompatible($Python, [string]$Site) {
+    $oldPythonPath = [Environment]::GetEnvironmentVariable('PYTHONPATH', 'Process')
+    try {
+        if ($Site) { $env:PYTHONPATH = $Site }
+        else { Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue }
+        $probe = @'
+from pathlib import Path
+import sqlite3
+import sys
+
+from autoclip import paths
+from autoclip.db.schema import SCHEMA_VERSION
+
+database = Path(paths.db_path())
+if database.is_file():
+    with sqlite3.connect(database.as_uri() + '?mode=ro', uri=True) as connection:
+        version = int(connection.execute('PRAGMA user_version').fetchone()[0])
+    if version > SCHEMA_VERSION:
+        raise SystemExit(42)
+'@
+        & $Python -c $probe
+        if ($LASTEXITCODE -eq 42) {
+            throw 'The user database schema is newer than this app supports. Rollback was aborted and the selected app was kept.'
+        }
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Could not verify user database compatibility; app rollback was aborted.'
+        }
+    } finally {
+        [Environment]::SetEnvironmentVariable('PYTHONPATH', $oldPythonPath, 'Process')
+    }
+}
+
 function Write-StableLauncher {
     $source = @'
 $ErrorActionPreference = 'Stop'
@@ -295,10 +327,12 @@ if ($Rollback) {
             throw 'The previous app requires another runtime; use the full updater.'
         }
         $site = Test-AppLayer $existing.previous
+        Assert-AppDatabaseCompatible $runtime.python $site
         Test-AppHealth $runtime.python $site
         $next = [ordered]@{ schema_version = 1; current = $existing.previous; previous = $existing.current }
         Commit-AppState ($next | ConvertTo-Json -Depth 5)
     } else {
+        Assert-AppDatabaseCompatible $runtime.python $null
         Commit-AppState '' -Remove
     }
     Write-Host 'Previous AutoClip app selected.'

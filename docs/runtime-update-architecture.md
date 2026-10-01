@@ -22,6 +22,18 @@ name is unused; preserve an existing shortcut rather than redirecting another
 installation. Both links start the verified local AutoClip desktop entry point
 without rebuilding or downloading another runtime.
 
+The Windows installer and updater show progress for identity checks,
+prerequisites, environment creation, native source build, offline package
+installation, verification, and activation. Native compilation has no reliable
+percentage, so that stage shows its current phase and live build output. Clear
+progress on success and failure; progress display does not replace exit-code
+or installed-state verification.
+
+Pinned native Git checkouts must support Windows paths created by nested
+submodules under the default build cache. A failed checkout must surface an
+error and leave the active release usable; a new candidate must pass this
+default-path installation step before promotion.
+
 The conceptual managed layout is:
 
 ```text
@@ -76,7 +88,11 @@ target. Retain at least current and previous verified app states; cleanup may
 remove only unreferenced managed layers under an explicit retention policy.
 Project databases, media, transcripts, exports, settings, and credentials
 remain outside managed release cleanup. App-data schema migration may limit
-rollback even when binaries remain; each release must state that impact.
+rollback even when binaries remain; each release must state that impact. Before
+selecting an older runtime or app layer, the updater reads the actual user
+database schema without migrating it and rejects a target that cannot open it.
+Rejection leaves the active release and user data intact; it does not downgrade
+or restore a database snapshot.
 
 ## Failure, repair, and migration
 
@@ -122,6 +138,15 @@ optional NVIDIA-only. Unselected historical cuDNN is not a current input.
 An inventory-only successor preserves reviewed legal/SBOM bytes and their original
 source attribution; provenance records the exact carry-forward basis. It assigns
 new immutable archive/manifest/standalone pins without changing installed behavior.
+
+A successor that adds a publisher wheel requires an exact attributable review
+packet. Final component plan/index rows must agree on nonempty installed legal
+paths that are present in the delivered wheel or source notice set. This checks
+recipient mapping; the review still decides which notice applies to each component.
+The dependency-and-app successor uses a native cache key from the pinned native
+build script and build inputs, plus the CPU/NVIDIA profile. Changing only the
+release ID or notices retains the key; a changed native input selects a new
+cache. Existing native receipts still validate any reused build.
 
 For a new source-built runtime, the updater retains the active runtime's
 NVIDIA profile when its verified native build receipt reports `profile=nvidia`

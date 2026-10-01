@@ -35,6 +35,15 @@ $statePath = Join-Path $baseFull 'active.json'
 $launcherPath = Join-Path $baseFull 'Start-AutoClip.ps1'
 $installerUrl = 'https://raw.githubusercontent.com/Farkoal2128/autoclip-runtime/main/install.ps1'
 
+function Show-UpdateProgress {
+    param([Parameter(Mandatory)][string]$Stage, [Parameter(Mandatory)][int]$Percent)
+    Write-Progress -Id 0 -Activity 'Updating AutoClip' -Status $Stage -PercentComplete $Percent
+}
+
+function Complete-UpdateProgress {
+    Write-Progress -Id 0 -Activity 'Updating AutoClip' -Completed
+}
+
 function Assert-AppStopped {
     $client = New-Object Net.Sockets.TcpClient
     $busy = $false
@@ -209,6 +218,52 @@ function Test-InstalledRelease($Release) {
     return $root
 }
 
+function Assert-UserDatabaseCompatible([string]$Python, [string]$ReleaseId) {
+    $site = $null
+    $appStatePath = Join-Path $baseFull 'app-active.json'
+    if (Test-Path -LiteralPath $appStatePath -PathType Leaf) {
+        $appState = Get-Content -LiteralPath $appStatePath -Raw | ConvertFrom-Json
+        if ($appState.schema_version -ne 1 -or -not $appState.current) {
+            throw 'The active app state is invalid; runtime selection was aborted.'
+        }
+        if ($appState.current.required_runtime -eq $ReleaseId) {
+            Assert-ReleaseId ([string]$appState.current.app_id)
+            $site = Join-Path (Join-Path (Join-Path $baseFull 'apps') ([string]$appState.current.app_id)) 'site'
+            if (-not (Test-Path -LiteralPath (Join-Path $site 'autoclip\app.py') -PathType Leaf)) {
+                throw 'The app layer selected for this runtime is missing; runtime selection was aborted.'
+            }
+        }
+    }
+
+    $oldPythonPath = [Environment]::GetEnvironmentVariable('PYTHONPATH', 'Process')
+    try {
+        if ($site) { $env:PYTHONPATH = $site }
+        else { Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue }
+    $probe = @'
+import sqlite3
+import sys
+from autoclip import paths
+from autoclip.db.schema import SCHEMA_VERSION
+
+database = paths.db_path()
+if database.is_file():
+    connection = sqlite3.connect(database.as_uri() + sys.argv[1], uri=True)
+    version = connection.execute(sys.argv[2]).fetchone()[0]
+    connection.close()
+    sys.exit(42 if version > SCHEMA_VERSION else 0)
+'@
+        & $Python -c $probe '?mode=ro' 'PRAGMA user_version'
+        if ($LASTEXITCODE -eq 42) {
+            throw 'The user database schema is newer than the selected AutoClip app supports. Rollback would not start; keep the current release.'
+        }
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Could not verify user database compatibility; the active release was not changed.'
+        }
+    } finally {
+        [Environment]::SetEnvironmentVariable('PYTHONPATH', $oldPythonPath, 'Process')
+    }
+}
+
 function Get-PreviousRelease([string]$NewReleaseId) {
     $priorId = $PreviousReleaseId
     if (-not $priorId) {
@@ -310,7 +365,8 @@ function Update-DesktopShortcut($Release) {
 }
 
 function Select-Release($Release, $Previous) {
-    [void](Test-InstalledRelease $Release)
+    $selectedRoot = Test-InstalledRelease $Release
+    Assert-UserDatabaseCompatible (Join-Path $selectedRoot '.venv\Scripts\python.exe') ([string]$Release.release_id)
     New-Item -ItemType Directory -Path $baseFull -Force | Out-Null
     Write-StableLauncher
     $shortcutBackup = Update-DesktopShortcut $Release
@@ -341,9 +397,14 @@ function Select-Release($Release, $Previous) {
 }
 
 $state = Read-ActiveState
+Show-UpdateProgress -Stage 'Checking installed release' -Percent 5
 if ($Rollback) {
-    if (-not $state -or -not $state.previous) { throw 'No previous AutoClip runtime is recorded for rollback.' }
-    Select-Release $state.previous $state.current
+    try {
+        if (-not $state -or -not $state.previous) { throw 'No previous AutoClip runtime is recorded for rollback.' }
+        Select-Release $state.previous $state.current
+    } finally {
+        Complete-UpdateProgress
+    }
     return
 }
 
@@ -355,6 +416,7 @@ try {
         $InstallerPath = $downloadedInstaller
     }
     $info = & $InstallerPath -ReleaseInfo -PrerequisitesOnly
+    Show-UpdateProgress -Stage 'Preparing exact release' -Percent 15
     if (@($info).Count -ne 1) { throw 'The current installer did not report one release identity.' }
     $releaseId = [string]$info.ReleaseId
     Assert-ReleaseId $releaseId
@@ -408,6 +470,7 @@ try {
         }
     }
     if (-not $validExisting) {
+        Show-UpdateProgress -Stage 'Installing and verifying new runtime' -Percent 25
         $arguments = @{ InstallRoot = $targetRoot }
         if ($ArchivePath) { $arguments.ArchivePath = $ArchivePath }
         if ($ExternalCache) { $arguments.ExternalCache = $ExternalCache }
@@ -429,6 +492,7 @@ try {
         }
         & $InstallerPath @arguments
     }
+    Show-UpdateProgress -Stage 'Activating verified release' -Percent 90
     $previous = if ($state -and $state.current.release_id -eq $releaseId) {
         $state.previous
     } elseif ($state) {
@@ -438,6 +502,7 @@ try {
     }
     Select-Release $release $previous
 } finally {
+    Complete-UpdateProgress
     if ($downloadedInstaller -and (Test-Path -LiteralPath $downloadedInstaller)) {
         Remove-Item -LiteralPath $downloadedInstaller
     }

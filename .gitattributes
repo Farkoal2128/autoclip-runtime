@@ -2,3 +2,4 @@ app-release.json text eol=lf
 .github/tests/fixtures/distro-LICENSE -text -diff
 release/review/component-evidence/* -text -diff
 release/review/component-evidence/manifest.json -text -diff
+release/notices/pillow/* -text -whitespace

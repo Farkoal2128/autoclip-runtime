@@ -14,6 +14,14 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'native-wheel-cache.ps1')
 $requiredMsysPackages = @('make', 'diffutils', 'pkgconf', 'mingw-w64-ucrt-x86_64-nasm')
 
+function Show-NativeBuildProgress([string]$Stage, [int]$Percent) {
+    Write-Progress -Id 2 -Activity 'Native source build' -Status $Stage -PercentComplete $Percent
+}
+
+function Complete-NativeBuildProgress {
+    Write-Progress -Id 2 -Activity 'Native source build' -Completed
+}
+
 function Invoke-Checked([string]$Program, [string[]]$Arguments) {
     & $Program @Arguments | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "$Program failed with exit code $LASTEXITCODE" }
@@ -38,17 +46,17 @@ function Get-VerifiedSource([string]$Name, [string]$Url, [long]$Size, [string]$S
 function Get-PinnedGitSource([string]$Name, [string]$Url, [string]$Commit) {
     $folder = Join-Path $BuildRoot $Name
     if (-not (Test-Path -LiteralPath (Join-Path $folder '.git'))) {
-        Invoke-Checked 'git' @('clone', '--recurse-submodules', $Url, $folder)
+        Invoke-Checked 'git' @('-c', 'core.longpaths=true', 'clone', '--recurse-submodules', $Url, $folder)
     }
-    & git -C $folder cat-file -e ($Commit + '^{commit}') 2>$null
-    if ($LASTEXITCODE -ne 0) { Invoke-Checked 'git' @('-C', $folder, 'fetch', 'origin', $Commit) }
-    $current = (& git -C $folder rev-parse HEAD).Trim().ToLowerInvariant()
+    & git -c core.longpaths=true -C $folder cat-file -e ($Commit + '^{commit}') 2>$null
+    if ($LASTEXITCODE -ne 0) { Invoke-Checked 'git' @('-c', 'core.longpaths=true', '-C', $folder, 'fetch', 'origin', $Commit) }
+    $current = (& git -c core.longpaths=true -C $folder rev-parse HEAD).Trim().ToLowerInvariant()
     if ($LASTEXITCODE -ne 0) { throw "Could not read Git source identity: $Name" }
-    if ($current -ne $Commit) { Invoke-Checked 'git' @('-C', $folder, 'checkout', '--detach', $Commit) }
-    Invoke-Checked 'git' @('-C', $folder, 'submodule', 'update', '--init', '--recursive')
-    $head = (& git -C $folder rev-parse HEAD).Trim().ToLowerInvariant()
+    if ($current -ne $Commit) { Invoke-Checked 'git' @('-c', 'core.longpaths=true', '-C', $folder, 'checkout', '--detach', $Commit) }
+    Invoke-Checked 'git' @('-c', 'core.longpaths=true', '-C', $folder, 'submodule', 'update', '--init', '--recursive')
+    $head = (& git -c core.longpaths=true -C $folder rev-parse HEAD).Trim().ToLowerInvariant()
     if ($LASTEXITCODE -ne 0 -or $head -ne $Commit) { throw "Git source identity mismatch: $Name" }
-    $dirty = & git -C $folder status --porcelain --untracked-files=no
+    $dirty = & git -c core.longpaths=true -C $folder status --porcelain --untracked-files=no
     if ($LASTEXITCODE -ne 0 -or $dirty) { throw "Git source has modified tracked files: $Name" }
     return $folder
 }
@@ -86,6 +94,7 @@ if ($openblasHash -ne '8b04387766efc05c627e26d24797ec0d4ed4c105ec14fa7400aa84a02
     throw 'Pinned OpenBLAS archive hash mismatch.'
 }
 
+Show-NativeBuildProgress -Stage 'Preparing source and build tools' -Percent 5
 [IO.Directory]::CreateDirectory($BuildRoot) | Out-Null
 [IO.Directory]::CreateDirectory($Wheelhouse) | Out-Null
 $ffmpegArchive = Get-VerifiedSource 'ffmpeg-8.1.2.tar.xz' 'https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz' 11710924 '464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c'
@@ -139,6 +148,7 @@ if (Test-Path -LiteralPath $receiptPath -PathType Leaf) {
         [string]$cachedReceipt.profile -ne $(if ($InstallNvidiaGpu) { 'nvidia' } else { 'cpu' })) {
         throw 'Cached native build receipt does not match the pinned source recipe.'
     }
+    Show-NativeBuildProgress -Stage 'Reusing verified native wheels' -Percent 90
     Restore-NativeWheelCache -BuildRoot $BuildRoot -Wheelhouse $Wheelhouse -Wheels @($cachedReceipt.wheels)
     $config = Join-Path $BuildRoot 'ffmpeg-config.mak'
     if ((Get-FileHash -LiteralPath $config -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$cachedReceipt.ffmpeg_config_sha256) {
@@ -146,8 +156,10 @@ if (Test-Path -LiteralPath $receiptPath -PathType Leaf) {
     }
     Invoke-Checked $buildPython @($verifier, $Wheelhouse, $config)
     Write-Host 'Reusing two verified wheels built from pinned source on this machine.'
+    Complete-NativeBuildProgress
     return
 }
+Show-NativeBuildProgress -Stage 'Building FFmpeg' -Percent 20
 $ffmpegScript = Join-Path $PSScriptRoot 'build-v11-codec-free-ffmpeg.sh'
 if (-not (Test-Path -LiteralPath $ffmpegScript)) { throw 'Codec-free FFmpeg build recipe is missing.' }
 $env:MSYS2_PATH_TYPE = 'inherit'
@@ -159,6 +171,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $BuildRoot 'ffmpeg-install\bin\avcod
 }
 $ffmpegInstall = Join-Path $BuildRoot 'ffmpeg-install'
 
+Show-NativeBuildProgress -Stage 'Building PyAV' -Percent 35
 if (-not @(Get-ChildItem -LiteralPath $Wheelhouse -Filter 'av-18.1.0-*.whl').Count) {
     Push-Location $pyavSource
     try {
@@ -169,12 +182,14 @@ if (-not @(Get-ChildItem -LiteralPath $Wheelhouse -Filter 'av-18.1.0-*.whl').Cou
     } finally { Pop-Location }
 }
 
+Show-NativeBuildProgress -Stage 'Building oneDNN' -Percent 50
 $oneDnnBuild = Join-Path $BuildRoot 'onednn-build'
 $oneDnnInstall = Join-Path $BuildRoot 'onednn-install'
 Invoke-Checked $cmake @('-S', $oneDnnSource, '-B', $oneDnnBuild, '-G', 'Visual Studio 17 2022', '-A', 'x64', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5', '-DDNNL_LIBRARY_TYPE=STATIC', '-DDNNL_CPU_RUNTIME=SEQ', '-DDNNL_GPU_RUNTIME=NONE', '-DDNNL_BUILD_TESTS=OFF', '-DDNNL_BUILD_EXAMPLES=OFF', "-DPYTHON_EXECUTABLE=$(Convert-ToCmakePath $buildPython)", "-DCMAKE_INSTALL_PREFIX=$(Convert-ToCmakePath $oneDnnInstall)")
 Invoke-Checked $cmake @('--build', $oneDnnBuild, '--config', 'Release', '--parallel', '8')
 Invoke-Checked $cmake @('--install', $oneDnnBuild, '--config', 'Release')
 
+Show-NativeBuildProgress -Stage 'Building CTranslate2' -Percent 75
 $ct2Build = Join-Path $BuildRoot 'ctranslate2-build'
 $ct2Install = Join-Path $BuildRoot 'ctranslate2-install'
 $ct2Args = @('-S', $ct2Source, '-B', $ct2Build, '-G', 'Visual Studio 17 2022', '-A', 'x64', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5', '-DWITH_CUDA=OFF', '-DWITH_OPENBLAS=ON', '-DOPENMP_RUNTIME=COMP', '-DWITH_MKL=OFF', '-DWITH_DNNL=ON', '-DWITH_RUY=OFF', '-DWITH_CUDNN=OFF', '-DWITH_FLASH_ATTN=OFF', "-DOPENBLAS_INCLUDE_DIR=$(Convert-ToCmakePath (Join-Path $openblasRoot 'include'))", "-DOPENBLAS_LIBRARY=$(Convert-ToCmakePath (Join-Path $openblasRoot 'lib\libopenblas.lib'))", "-DDNNL_INCLUDE_DIR=$(Convert-ToCmakePath (Join-Path $oneDnnInstall 'include'))", "-DDNNL_LIBRARY=$(Convert-ToCmakePath (Join-Path $oneDnnInstall 'lib\dnnl.lib'))", "-DCMAKE_INSTALL_PREFIX=$(Convert-ToCmakePath $ct2Install)")
@@ -196,6 +211,7 @@ try {
 
 $wheels = @(Get-ChildItem -LiteralPath $Wheelhouse -Filter '*.whl' | Where-Object { $_.Name -match '^(av-18\.1\.0|ctranslate2-4\.8\.2)-' })
 if ($wheels.Count -ne 2) { throw 'Native source build did not produce both controlled wheels.' }
+Show-NativeBuildProgress -Stage 'Verifying native wheels' -Percent 95
 Invoke-Checked $buildPython @($verifier, $Wheelhouse, (Join-Path $BuildRoot 'ffmpeg-config.mak'))
 $receipt = [ordered]@{
     profile = if ($InstallNvidiaGpu) { 'nvidia' } else { 'cpu' }
@@ -219,3 +235,4 @@ $receipt = [ordered]@{
 Save-NativeWheelCache -BuildRoot $BuildRoot -Wheelhouse $Wheelhouse -Wheels @($receipt.wheels)
 $receipt | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $BuildRoot 'native-build-receipt.json') -Encoding UTF8
 Write-Host "Built PyAV and CTranslate2 from pinned source in $Wheelhouse"
+Complete-NativeBuildProgress

@@ -54,6 +54,9 @@ jobs:
           ./tests/PrerequisiteConsent.Tests.ps1
           ./tests/PrerequisiteTerms.Tests.ps1
           ./tests/CudaPrerequisites.Tests.ps1
+          ./tests/NativeGitLongPaths.Tests.ps1
+          ./tests/NativeBuildProgress.Tests.ps1
+          ./tests/UpdateProgress.Tests.ps1
       - name: Source-routed package regression cases
         shell: pwsh
         run: |
@@ -182,6 +185,9 @@ jobs:
       - name: Update, rollback and failure recovery
         shell: pwsh
         run: ./.github/tests/Update.Tests.ps1 -BaseRoot (Join-Path $env:RUNNER_TEMP 'AutoClip')
+      - name: Reject rollback to an app older than user data
+        shell: pwsh
+        run: ./tests/UpdateDatabaseRollback.Tests.ps1 -InstalledRoot (Join-Path $env:RUNNER_TEMP 'AutoClip\v11-20260926-notice-correction') -FixtureRoot (Join-Path $env:RUNNER_TEMP 'autoclip-db-rollback')
       - name: App-only published update and rollback
         shell: pwsh
         run: |
@@ -191,6 +197,9 @@ jobs:
           if ($state.current.app_id -ne 'app-20260926-cr11') { throw 'The published app was not selected.' }
           & ./update-app.ps1 -BaseRoot $base -Rollback -NoShortcut
           if (Test-Path -LiteralPath (Join-Path $base 'app-active.json')) { throw 'Legacy app rollback failed.' }
+      - name: Reject app rollback to an app older than user data
+        shell: pwsh
+        run: ./tests/UpdateAppDatabaseRollback.Tests.ps1 -InstalledRoot (Join-Path $env:RUNNER_TEMP 'AutoClip\v11-20260926-notice-correction') -FixtureRoot (Join-Path $env:RUNNER_TEMP 'autoclip-app-db-rollback')
       - name: App-only failure and shortcut fixtures
         shell: pwsh
         run: |
