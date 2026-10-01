@@ -212,6 +212,68 @@ try {
     if ($appState.current.app_id -ne 'fixture-app-v2') {
         throw 'Repeated rollback did not select the retained app.'
     }
+    $manifest.app_id = 'fixture-app-v1'
+    $manifest.wheel_sha256 = (Get-FileHash -LiteralPath $WheelPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $manifest.wheel_size = (Get-Item -LiteralPath $WheelPath).Length
+    [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 5))
+    & $updater -BaseRoot $fixture -ManifestPath $manifestPath -WheelPath $WheelPath -NoShortcut
+    $appState = Get-Content -LiteralPath (Join-Path $fixture 'app-active.json') -Raw | ConvertFrom-Json
+    if ($appState.current.app_id -ne 'fixture-app-v1' -or $appState.previous.app_id -ne 'fixture-app-v2') {
+        throw 'Reapplying a retained app after rollback did not restore its selection.'
+    }
+    $retainedWheel = Join-Path $fixture 'apps\fixture-app-v2\autoclip.whl'
+    $retainedBytes = [IO.File]::ReadAllBytes($retainedWheel)
+    $before = [IO.File]::ReadAllText((Join-Path $fixture 'app-active.json'))
+    try {
+        [IO.File]::WriteAllText($retainedWheel, 'damaged retained wheel')
+        $manifest.app_id = 'fixture-app-v2'
+        [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 5))
+        try {
+            & $updater -BaseRoot $fixture -ManifestPath $manifestPath -WheelPath $WheelPath -NoShortcut
+            throw 'A damaged retained app was activated.'
+        } catch {
+            if ($_.Exception.Message -notlike '*app layer wheel hash*') { throw }
+        }
+        if ([IO.File]::ReadAllText((Join-Path $fixture 'app-active.json')) -ne $before) {
+            throw 'A damaged retained app changed active selection.'
+        }
+    } finally { [IO.File]::WriteAllBytes($retainedWheel, $retainedBytes) }
+    $retainedPage = Join-Path $fixture 'apps\fixture-app-v2\site\autoclip\static\index.html'
+    $pageBytes = [IO.File]::ReadAllBytes($retainedPage)
+    try {
+        [IO.File]::WriteAllText($retainedPage, 'changed retained page')
+        try {
+            & $updater -BaseRoot $fixture -ManifestPath $manifestPath -WheelPath $WheelPath -NoShortcut
+            throw 'A modified retained app page was activated.'
+        } catch {
+            if ($_.Exception.Message -notlike '*app layer content differs*') { throw }
+        }
+        if ([IO.File]::ReadAllText((Join-Path $fixture 'app-active.json')) -ne $before) {
+            throw 'A modified retained app page changed active selection.'
+        }
+    } finally { [IO.File]::WriteAllBytes($retainedPage, $pageBytes) }
+    $oldHome = [Environment]::GetEnvironmentVariable('AUTOCLIP_HOME', 'Process')
+    $futureHome = Join-Path $fixture 'future-user-data'
+    New-Item -ItemType Directory -Path $futureHome | Out-Null
+    try {
+        $env:AUTOCLIP_HOME = $futureHome
+        $python = Join-Path $runtime '.venv\Scripts\python.exe'
+        $futureSchema = [int](& $python -c 'from autoclip.db.schema import SCHEMA_VERSION; print(SCHEMA_VERSION)') + 1
+        & $python -c 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute(sys.argv[2]); c.close()' (Join-Path $futureHome 'autoclip.db') ("PRAGMA user_version=" + $futureSchema)
+        if ($LASTEXITCODE -ne 0) { throw 'Could not create the future-schema app fixture.' }
+        $before = [IO.File]::ReadAllText((Join-Path $fixture 'app-active.json'))
+        $manifest.app_id = 'fixture-app-v2'
+        [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 5))
+        try {
+            & $updater -BaseRoot $fixture -ManifestPath $manifestPath -WheelPath $WheelPath -NoShortcut
+            throw 'A retained app incompatible with user data was activated.'
+        } catch {
+            if ($_.Exception.Message -notlike '*database schema is newer*') { throw }
+        }
+        if ([IO.File]::ReadAllText((Join-Path $fixture 'app-active.json')) -ne $before) {
+            throw 'Rejected retained-app reactivation changed active selection.'
+        }
+    } finally { [Environment]::SetEnvironmentVariable('AUTOCLIP_HOME', $oldHome, 'Process') }
     $manifest.app_id = 'fixture-compatible-runtime'
     $manifest.required_runtime = 'another-runtime'
     $manifest.runtime_manifest_sha256 = ('0' * 64)

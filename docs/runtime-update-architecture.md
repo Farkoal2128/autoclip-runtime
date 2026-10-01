@@ -86,6 +86,10 @@ the same runtime, it requires no network or dependency reinstall. If they use
 different runtimes, retain both until the previous app is no longer a rollback
 target. Retain at least current and previous verified app states; cleanup may
 remove only unreferenced managed layers under an explicit retention policy.
+Reapplying an app whose layer was retained after rollback verifies its pinned
+wheel and every extracted wheel file, dependencies, health and user database
+compatibility, then selects that layer without deleting or extracting it again.
+A changed wheel file or failed health check leaves activation unchanged.
 Project databases, media, transcripts, exports, settings, and credentials
 remain outside managed release cleanup. App-data schema migration may limit
 rollback even when binaries remain; each release must state that impact. Before

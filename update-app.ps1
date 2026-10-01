@@ -113,6 +113,22 @@ function Test-AppLayer($App) {
     if ((Get-FileHash -LiteralPath $wheel -Algorithm SHA256).Hash -ne $App.wheel_sha256) {
         throw 'The app layer wheel hash does not match its manifest.'
     }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [IO.Compression.ZipFile]::OpenRead($wheel)
+    try {
+        foreach ($entry in $zip.Entries) {
+            if ($entry.FullName.EndsWith('/')) { continue }
+            $file = Join-Path $site $entry.FullName.Replace('/', '\')
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw 'The app layer content differs from its wheel.' }
+            $stream = $entry.Open()
+            try { $expected = (Get-FileHash -InputStream $stream -Algorithm SHA256).Hash }
+            finally { $stream.Dispose() }
+            if ((Get-Item -LiteralPath $file).Length -ne $entry.Length -or
+                (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $expected) {
+                throw 'The app layer content differs from its wheel.'
+            }
+        }
+    } finally { $zip.Dispose() }
     return $site
 }
 
@@ -408,28 +424,34 @@ if ((Get-Item -LiteralPath $WheelPath).Length -ne [long]$manifest.wheel_size -or
 $appsRoot = Join-Path $baseFull 'apps'
 New-Item -ItemType Directory -Path $appsRoot -Force | Out-Null
 $target = Join-Path $appsRoot $app.app_id
-if (Test-Path -LiteralPath $target) { throw "App layer already exists: $target" }
-$staging = Join-Path $appsRoot ('.staging-' + [guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Path $staging | Out-Null
-try {
-    $site = Join-Path $staging 'site'
-    New-Item -ItemType Directory -Path $site | Out-Null
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $zip = [IO.Compression.ZipFile]::OpenRead($WheelPath)
-    try {
-        foreach ($entry in $zip.Entries) {
-            $name = $entry.FullName.Replace('\', '/')
-            if ($name.StartsWith('/') -or $name -match '(^|/)\.\.(/|$)' -or $name -match '^[A-Za-z]:') {
-                throw 'The app wheel contains an unsafe path.'
-            }
-        }
-    } finally { $zip.Dispose() }
-    [IO.Compression.ZipFile]::ExtractToDirectory($WheelPath, $site)
-    Copy-Item -LiteralPath $WheelPath -Destination (Join-Path $staging 'autoclip.whl')
+if (Test-Path -LiteralPath $target) {
+    $site = Test-AppLayer $app
     Test-AppHealth $runtime.python $site
-    Move-Item -LiteralPath $staging -Destination $target
-} finally {
-    if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
+    Assert-AppDatabaseCompatible $runtime.python $site
+} else {
+    $staging = Join-Path $appsRoot ('.staging-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $staging | Out-Null
+    try {
+        $site = Join-Path $staging 'site'
+        New-Item -ItemType Directory -Path $site | Out-Null
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [IO.Compression.ZipFile]::OpenRead($WheelPath)
+        try {
+            foreach ($entry in $zip.Entries) {
+                $name = $entry.FullName.Replace('\', '/')
+                if ($name.StartsWith('/') -or $name -match '(^|/)\.\.(/|$)' -or $name -match '^[A-Za-z]:') {
+                    throw 'The app wheel contains an unsafe path.'
+                }
+            }
+        } finally { $zip.Dispose() }
+        [IO.Compression.ZipFile]::ExtractToDirectory($WheelPath, $site)
+        Copy-Item -LiteralPath $WheelPath -Destination (Join-Path $staging 'autoclip.whl')
+        Test-AppHealth $runtime.python $site
+        Assert-AppDatabaseCompatible $runtime.python $site
+        Move-Item -LiteralPath $staging -Destination $target
+    } finally {
+        if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
+    }
 }
 $previous = if ($existing) { $existing.current } else { $null }
 $next = [ordered]@{ schema_version = 1; current = $app; previous = $previous }
