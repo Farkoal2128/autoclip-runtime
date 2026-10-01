@@ -55,6 +55,7 @@ def build(base, standalone, wheel, bundle, output, installer, revision, builder_
         status = json.loads(source.read(STATUS))
         if status["release_id"] != BASE_RELEASE or status["publication_state"] != "UNPUBLISHABLE_REVIEW_PENDING":
             raise ValueError("r21 status differs")
+        old_manifest_sha = sha(source.read("release-manifest.json"))
         old_app = source.read(APP)
         if sha(old_app) != status["current_app_wheel_sha256"]:
             raise ValueError("r21 app wheel status differs")
@@ -129,7 +130,7 @@ def build(base, standalone, wheel, bundle, output, installer, revision, builder_
                 h["validate_archive"](target)
             script = standalone.read_bytes()
             for old, new in ((BASE_SHA, sha(output.read_bytes())),
-                             (sha(source.read("release-manifest.json")), sha(encoded(manifest))),
+                             (old_manifest_sha, sha(encoded(manifest))),
                              (BASE_RELEASE, RELEASE)):
                 script = h["replace_one"](script, old.encode(), new.encode())
             installer.write_bytes(script)
