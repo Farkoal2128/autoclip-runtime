@@ -74,8 +74,11 @@ process. Winget selects exact x64 package identities: `astral-sh.uv` 0.12.19,
 `Gyan.FFmpeg` 9.0.1, `Git.Git` 2.55.0.3, `MSYS2.MSYS2` 20260611, and
 `Microsoft.VisualStudio.2022.BuildTools` 17.14.41 with
 `Microsoft.VisualStudio.Workload.VCTools` and
-`Microsoft.VisualStudio.Component.Windows10SDK.20348`. Python comes from uv's
+`Microsoft.VisualStudio.Component.Windows11SDK.26100`. Python comes from uv's
 3.11 selection, with `Python.Python.3.11` 3.11.9 as the winget fallback.
+The separate Inno Setup migration draft selects the exact official MinGit
+2.55.0.3 ZIP for its guarded recipient route; `install.ps1` retains this
+winget fallback for standalone use.
 MSYS2 installs `make`, `diffutils`, `pkgconf`, and
 `mingw-w64-ucrt-x86_64-nasm` through pacman, then validates those commands.
 The native builder acquires exact `cmake` 4.4.3 and other build Python wheels

@@ -17,9 +17,10 @@ $calls = @($ast.FindAll({
 }, $true))
 $completionMarker = (Get-Content -LiteralPath (Join-Path $repo 'install.ps1') -Raw).LastIndexOf("'.install-complete'")
 if ($calls.Count -ne 1 -or $completionMarker -lt 0 -or
-    $calls[0].Extent.StartOffset -lt $completionMarker) {
-    throw 'Fresh installation must create launchers only after recording a complete install.'
+    $calls[0].Extent.StartOffset -gt $completionMarker) {
+    throw 'Fresh installation must create its required launcher before recording a complete install.'
 }
+foreach($helper in $ast.FindAll({param($n)$n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Assert-AutoClipSecurePath'},$true)){Invoke-Expression $helper.Extent.Text}
 Invoke-Expression $function.Extent.Text
 
 $root = Join-Path $env:TEMP ('autoclip-launcher-test-' + [guid]::NewGuid().ToString('N'))
@@ -53,6 +54,12 @@ try {
     Install-AutoClipLaunchers -InstallRoot $install -DesktopDirectory $existing
     if ([IO.File]::ReadAllText((Join-Path $existing 'AutoClip.lnk')) -ne 'existing user shortcut') {
         throw 'Installer replaced an existing desktop shortcut.'
+    }
+    $setupDesktop = Join-Path $root 'setup-desktop'
+    New-Item -ItemType Directory -Path $setupDesktop | Out-Null
+    Install-AutoClipLaunchers -InstallRoot $install -DesktopDirectory $setupDesktop -SkipDesktopShortcut
+    if (Test-Path -LiteralPath (Join-Path $setupDesktop 'AutoClip.lnk')) {
+        throw 'Wizard-managed installation created an unmanaged Desktop shortcut.'
     }
     Write-Output 'Install-folder and desktop launchers target the verified local app; existing shortcut preserved.'
 } finally {

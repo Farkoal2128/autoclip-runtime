@@ -1,0 +1,710 @@
+{
+  "schema_version": 1,
+  "target_release": {
+    "id": "v11-20260928-source-build-candidate-v40-provenance-continuity",
+    "url": "https://github.com/Farkoal2128/autoclip-runtime/releases/download/v0.1.0-dev0-windows-source-v40-20260928/autoclip-source-build-v40-provenance-continuity.zip",
+    "bytes": 173196134,
+    "sha256": "f2b3be779294bc55d6f5f56c2a780a2d6b863486f3af9bd7d19f30051961fc9f",
+    "manifest_sha256": "7fbf72038be30522bc176002082fddd92fd4e057159765726e77806a296658e2",
+    "distribution_inventory_sha256": "850c173ab3d7a4ba53fdbd83750ca33f01812210cdee696ffad07284bf2abf89",
+    "prerequisite_terms_sha256": "6bac98278fe19233d0858e12cb27483967bbf9b3b4f83b97c4601253631cb4a0",
+    "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+    "review_scope": "published v40 source-build archive; new Inno wrapper and final bytes unreviewed",
+    "redirect_hosts": [
+      "github.com",
+      "release-assets.githubusercontent.com"
+    ]
+  },
+  "publisher_wheels": {
+    "manifest_path": "publisher-wheel-manifest.json",
+    "sha256": "29f1e0b5e42b246e84e01b2e9ca407554faf5118177ecc3d2ff0b138d7b0fd38",
+    "count": 74,
+    "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+    "license_evidence": "notices-and-source/legal-index.json",
+    "redirect_hosts": [
+      "files.pythonhosted.org"
+    ]
+  },
+  "external_assets": [
+    {
+      "kind": "openblas_archive",
+      "identity": "OpenBLAS 0.3.30 x64",
+      "version": "0.3.30",
+      "architecture": "x64",
+      "filename": "OpenBLAS-0.3.30-x64.zip",
+      "url": "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.30/OpenBLAS-0.3.30-x64.zip",
+      "bytes": 40561566,
+      "sha256": "8b04387766efc05c627e26d24797ec0d4ed4c105ec14fa7400aa84a02db22b66",
+      "profile": "both",
+      "purpose": "native CPU math library for recipient-built CTranslate2",
+      "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+      "detection": "verify extracted bin/libopenblas.dll SHA-256 in the selected native build receipt",
+      "installer_arguments": [],
+      "success_exit_codes": [],
+      "reboot_behavior": "none",
+      "post_install_check": "verify bin/libopenblas.dll SHA-256 e824cf9fc22e5949807ce995a32e413a345fb97e63e6d10cfbf41aa86382193c and CTranslate2 CPU inference",
+      "license_evidence": "notices-and-source/component-evidence",
+      "redirect_hosts": [
+        "github.com",
+        "release-assets.githubusercontent.com"
+      ]
+    },
+    {
+      "kind": "microsoft_vc_redist_x64",
+      "identity": "Microsoft Visual C++ Redistributable x64",
+      "version": "14.44.35211.0",
+      "architecture": "x64",
+      "filename": "VC_redist.x64.exe",
+      "url": "https://download.visualstudio.microsoft.com/download/pr/bd1c8d9d-ba95-4eee-bc6e-df1fcc876373/CC0FF0EB1DC3F5188AE6300FAEF32BF5BEEBA4BDD6E8E445A9184072096B713B/VC_redist.x64.exe",
+      "bytes": 25635768,
+      "sha256": "cc0ff0eb1dc3f5188ae6300faef32bf5beeba4bdd6e8e445a9184072096b713b",
+      "profile": "both",
+      "purpose": "Microsoft runtime and VCOMP140 for native modules",
+      "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+      "detection": "verify x64 VC runtime DLL versions and CTranslate2 CPU capability; registry presence alone is insufficient",
+      "installer_arguments": [
+        "/install",
+        "/norestart"
+      ],
+      "success_exit_codes": [
+        0,
+        3010
+      ],
+      "reboot_behavior": "3010 requires restart and post-reboot capability check",
+      "signature_publisher": "Microsoft Corporation",
+      "post_install_check": "verify installed runtime DLLs and native CTranslate2 import/inference",
+      "license_evidence": "release/scripts/prerequisite-terms.json#vc-redist",
+      "redirect_hosts": [
+        "download.visualstudio.microsoft.com"
+      ]
+    },
+    {
+      "kind": "python_wheel",
+      "identity": "NVIDIA cuBLAS 12.4.5.8 Windows x64 wheel",
+      "version": "12.4.5.8",
+      "architecture": "x64",
+      "filename": "nvidia_cublas_cu12-12.4.5.8-py3-none-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/e2/2a/4f27ca96232e8b5269074a72e03b4e0d43aa68c9b965058b1684d07c6ff8/nvidia_cublas_cu12-12.4.5.8-py3-none-win_amd64.whl",
+      "bytes": 396895858,
+      "sha256": "5a796786da89203a0657eda402bcdcec6180254a8ac22d72213abc42069522dc",
+      "profile": "nvidia",
+      "purpose": "optional GPU inference runtime",
+      "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+      "detection": "verify wheel RECORD, exact installed DLL hashes and actual GPU inference",
+      "installer_arguments": [],
+      "success_exit_codes": [],
+      "reboot_behavior": "none",
+      "post_install_check": "verify wheel RECORD, CUDA DLL loading and GPU inference",
+      "license_evidence": "release/scripts/prerequisite-terms.json#cublas",
+      "review_status": "exact-v40 publisher route reviewed; new Inno consent and hardware installation unverified",
+      "redirect_hosts": [
+        "files.pythonhosted.org"
+      ]
+    }
+  ],
+  "compiler": {
+    "identity": "Inno Setup 7.1.0 x64 compiler",
+    "version": "7.1.0",
+    "url": "https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe",
+    "bytes": 14304168,
+    "sha256": "0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f",
+    "compiler_executable_bytes": 2135968,
+    "compiler_executable_sha256": "d06ebd38f38e3cee60a3c50cc45bd449d77e0bc6a5cabc607ea9886808e4de1a",
+    "delivery_classification": "SYSTEM_PROVIDED",
+    "license_evidence": "https://jrsoftware.org/files/is/license.txt",
+    "license_notice_path": "release/notices/inno-setup-7.1.0-LICENSE.txt",
+    "license_notice_sha256": "2e5346868c2a18434489824e11d65c3031620f792fefc415d05f19cd441abf5c",
+    "provenance_status": "local bytes match publisher API digest; Authenticode Valid, signer Pyrsys B.V."
+  },
+  "build_prerequisites": [
+    {
+      "identity": "uv",
+      "version": "0.12.19",
+      "architecture": "x64",
+      "profile": "both",
+      "winget_id": "astral-sh.uv",
+      "url": "https://github.com/astral-sh/uv/releases/download/0.12.19/uv-x86_64-pc-windows-msvc.zip",
+      "bytes": 17955780,
+      "sha256": "6dbb02d79e419522f1c500f0adb1cddcff0cda7d59b0d66ea7f5e3b4a1b2f5f0",
+      "artifact_pin_status": "publisher_metadata_and_local_hash",
+      "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+      "reason": "Exact official archive acquisition/extraction/version verified on ordinary clean-snapshot guest; versioned MIT/Apache texts and source index bound in setup. Direct acquisition permitted; exact final installed notices and whole-wizard qualification remain pending (IM-TOOL-01/02/03, IM-DEP-01).",
+      "redirect_hosts": [
+        "github.com",
+        "release-assets.githubusercontent.com"
+      ],
+      "publisher": "Astral Software Inc.; signed by OpenAI OpCo, LLC",
+      "purpose": "recipient Python environment and pinned package installation",
+      "artifact_kind": "archive",
+      "detection": "Valid OpenAI OpCo, LLC Authenticode and uv 0.12.19",
+      "installer_arguments": [],
+      "success_exit_codes": [],
+      "reboot_behavior": "none",
+      "elevation": "none",
+      "post_install_check": "signed exact executable, uv --version and Python 3.11.9 venv selection",
+      "license_evidence": "docs/installer-migration/work-orders/IM-TOOL-01.md"
+    },
+    {
+      "identity": "Gyan FFmpeg",
+      "version": "9.0.1",
+      "architecture": "x64",
+      "profile": "both",
+      "winget_id": "Gyan.FFmpeg",
+      "url": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.1/ffmpeg-9.0.1-essentials_build.zip",
+      "bytes": 111253802,
+      "sha256": "fec81ae03971d9dd4be3ebe02e263bd2ec1d789483f931bdba5f5715e65da2e9",
+      "artifact_pin_status": "publisher_metadata_and_local_hash",
+      "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+      "reason": "Exact official essentials archive, complete retained notices/inventory, executable pins, persistent discovery and render/decode verified (IM-FF-07, IM-CPU-26). Recipient acquisition only; no redistribution/source-closure approval. Exact whole-wizard qualification remains pending (IM-DEP-01).",
+      "redirect_hosts": [
+        "github.com",
+        "release-assets.githubusercontent.com"
+      ],
+      "filename": "ffmpeg-9.0.1-essentials_build.zip",
+      "artifact_kind": "archive",
+      "publisher": "Gyan Doshi",
+      "purpose": "separate CLI media decode, subtitle rendering and H.264/AAC export",
+      "detection": "exact selected binary hashes/version plus ass/subtitles/libx264 and FFprobe",
+      "installer_arguments": [],
+      "success_exit_codes": [],
+      "reboot_behavior": "none",
+      "elevation": "none",
+      "post_install_check": "ASS plus H.264/AAC render and FFprobe/frame-decode check",
+      "license_evidence": "docs/installer-migration/work-orders/IM-FF-02.md",
+      "operation_scope": "official recipient download and private unmodified external CLI execution; no AutoClip redistribution or mirror",
+      "supplier_source_notice_status": "complete static-linked supplier source/notice closure unproved; this is not redistribution clearance",
+      "executable_pins": [
+        {
+          "path": "ffmpeg-9.0.1-essentials_build/bin/ffmpeg.exe",
+          "sha256": "72a489eccd008c2ec2c0a5856c5c75bc3d8bbfa90166c4566865c246445e6aa3"
+        },
+        {
+          "path": "ffmpeg-9.0.1-essentials_build/bin/ffprobe.exe",
+          "sha256": "19202b23c0043f15ad1b7bce2344f406fd52bd6efd8f995ce02e7392a1cec52f"
+        }
+      ]
+    },
+    {
+      "identity": "Git for Windows",
+      "version": "2.55.0.3",
+      "architecture": "x64",
+      "profile": "both",
+      "artifact_kind": "archive",
+      "publisher": "Git for Windows",
+      "purpose": "exact native-source checkout",
+      "url": "https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.3/MinGit-2.55.0.3-64-bit.zip",
+      "bytes": 38791206,
+      "sha256": "f48e2d2dc74a24454adc6d8fd0ac25bf9c2386f19cfb06202b9465aaad4f9f05",
+      "artifact_pin_status": "publisher_checksum_and_local_hash",
+      "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+      "detection": "git version 2.55.0.windows.3 and signed cmd/git.exe",
+      "installer_arguments": [],
+      "success_exit_codes": [],
+      "reboot_behavior": "none",
+      "elevation": "none",
+      "post_install_check": "git version and pinned source checkout",
+      "license_evidence": "MinGit-2.55.0.3-64-bit.zip/LICENSE.txt and mingw64/share/licenses",
+      "reason": "Exact official MinGit archive acquisition/extraction/signature/version and retained package notice tree verified (IM-TOOL-01, IM-DEP-01). Direct recipient acquisition permitted; exact whole-wizard qualification remains pending.",
+      "redirect_hosts": [
+        "github.com",
+        "release-assets.githubusercontent.com"
+      ]
+    },
+    {
+      "identity": "MSYS2",
+      "version": "20260611",
+      "architecture": "x64",
+      "profile": "both",
+      "artifact_kind": "archive",
+      "archive_format": "tar.xz",
+      "url": "https://github.com/msys2/msys2-installer/releases/download/2026-06-11/msys2-base-x86_64-20260611.tar.xz",
+      "bytes": 53555380,
+      "sha256": "a2d047e8ee213c3c6a49a8de427eb1069df12207c0422ff1b3cbb5c905c34221",
+      "artifact_pin_status": "publisher_metadata_and_local_hash",
+      "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+      "reason": "Exact official base/key/signature and five package/signature chain, initialization, protected startup and real source queries verified (IM-MS-14/16, IM-CPU-23). Direct recipient acquisition permitted; exact whole-wizard qualification remains pending (IM-DEP-01).",
+      "redirect_hosts": [
+        "github.com",
+        "release-assets.githubusercontent.com"
+      ],
+      "filename": "msys2-base-x86_64-20260611.tar.xz",
+      "signature": {
+        "filename": "msys2-base-x86_64-20260611.tar.xz.sig",
+        "url": "https://github.com/msys2/msys2-installer/releases/download/2026-06-11/msys2-base-x86_64-20260611.tar.xz.sig",
+        "bytes": 566,
+        "sha256": "076f5623b702d5016cf0253e1d14a6bd4870a90243243e96409b227f0d5bf70f",
+        "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+        "redirect_hosts": [
+          "github.com",
+          "release-assets.githubusercontent.com"
+        ]
+      },
+      "installer_key": {
+        "filename": "installer-signer.asc",
+        "url": "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x0EBF782C5D53F7E5FB02A66746BD761F7A49B0EC",
+        "bytes": 52107,
+        "sha256": "a247a92716ab322770e800793c10136dd22a6ea4691fdd2b9c72d4cfc5221082",
+        "fingerprint": "0EBF782C5D53F7E5FB02A66746BD761F7A49B0EC",
+        "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+        "redirect_hosts": [
+          "keyserver.ubuntu.com"
+        ]
+      },
+      "packages": [
+        {
+          "identity": "diffutils",
+          "version": "3.12-1",
+          "architecture": "x86_64",
+          "filename": "diffutils-3.12-1-x86_64.pkg.tar.zst",
+          "url": "https://repo.msys2.org/msys/x86_64/diffutils-3.12-1-x86_64.pkg.tar.zst",
+          "bytes": 394515,
+          "sha256": "7902c8ce3d4dd69a0f5e98dc9d5c83c17b23314ba486169db57ef6e2835ce3b6",
+          "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+          "signature": {
+            "filename": "diffutils-3.12-1-x86_64.pkg.tar.zst.sig",
+            "url": "https://repo.msys2.org/msys/x86_64/diffutils-3.12-1-x86_64.pkg.tar.zst.sig",
+            "bytes": 566,
+            "sha256": "f25457caac4b77e5341e8fd02a53e696a023024ed398992eec199a43fd26c811",
+            "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+            "redirect_hosts": [
+              "repo.msys2.org"
+            ]
+          },
+          "redirect_hosts": [
+            "repo.msys2.org"
+          ]
+        },
+        {
+          "identity": "make",
+          "version": "4.4.1-3",
+          "architecture": "x86_64",
+          "filename": "make-4.4.1-3-x86_64.pkg.tar.zst",
+          "url": "https://repo.msys2.org/msys/x86_64/make-4.4.1-3-x86_64.pkg.tar.zst",
+          "bytes": 514683,
+          "sha256": "af0bdba17f06fe037f0194069adaa31a8fe45f1a11381501896aea1fae37bd5d",
+          "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+          "signature": {
+            "filename": "make-4.4.1-3-x86_64.pkg.tar.zst.sig",
+            "url": "https://repo.msys2.org/msys/x86_64/make-4.4.1-3-x86_64.pkg.tar.zst.sig",
+            "bytes": 566,
+            "sha256": "7f53c96aeb1a29d9917e2b00e9f709fbdc5b0458e6535e88b1fed69365191265",
+            "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+            "redirect_hosts": [
+              "repo.msys2.org"
+            ]
+          },
+          "redirect_hosts": [
+            "repo.msys2.org"
+          ]
+        },
+        {
+          "identity": "mingw-w64-ucrt-x86_64-nasm",
+          "version": "3.02-1",
+          "architecture": "any",
+          "filename": "mingw-w64-ucrt-x86_64-nasm-3.02-1-any.pkg.tar.zst",
+          "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-nasm-3.02-1-any.pkg.tar.zst",
+          "bytes": 452146,
+          "sha256": "e60cf678bedee3d6c9a9264f8dec5897520e5ff7e3ae80c2b90b2628c5f51d58",
+          "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+          "signature": {
+            "filename": "mingw-w64-ucrt-x86_64-nasm-3.02-1-any.pkg.tar.zst.sig",
+            "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-nasm-3.02-1-any.pkg.tar.zst.sig",
+            "bytes": 566,
+            "sha256": "8939ebb3d4a4c5b56aad2c1af14b9a438a8ee79c9f2b66277d6260a6a08d8120",
+            "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+            "redirect_hosts": [
+              "repo.msys2.org"
+            ]
+          },
+          "redirect_hosts": [
+            "repo.msys2.org"
+          ]
+        },
+        {
+          "identity": "mingw-w64-ucrt-x86_64-zlib",
+          "version": "1.3.2-2",
+          "architecture": "any",
+          "filename": "mingw-w64-ucrt-x86_64-zlib-1.3.2-2-any.pkg.tar.zst",
+          "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-zlib-1.3.2-2-any.pkg.tar.zst",
+          "bytes": 111475,
+          "sha256": "841401182976d2f9e17e5c0ebaac51f2a8014140ea53d67625e91c8fb3c85ea0",
+          "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+          "signature": {
+            "filename": "mingw-w64-ucrt-x86_64-zlib-1.3.2-2-any.pkg.tar.zst.sig",
+            "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-zlib-1.3.2-2-any.pkg.tar.zst.sig",
+            "bytes": 566,
+            "sha256": "3c21e4ca62ae9544f37ad41b0910f64d60f4f0c4c4113bc5c9287ce2b6396acb",
+            "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+            "redirect_hosts": [
+              "repo.msys2.org"
+            ]
+          },
+          "redirect_hosts": [
+            "repo.msys2.org"
+          ]
+        },
+        {
+          "identity": "pkgconf",
+          "version": "3.0.7-1",
+          "architecture": "x86_64",
+          "filename": "pkgconf-3.0.7-1-x86_64.pkg.tar.zst",
+          "url": "https://repo.msys2.org/msys/x86_64/pkgconf-3.0.7-1-x86_64.pkg.tar.zst",
+          "bytes": 120051,
+          "sha256": "5e051b9623f7e539515f8c42430bf4bd1e377a459e810faea4358f48c3115199",
+          "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+          "signature": {
+            "filename": "pkgconf-3.0.7-1-x86_64.pkg.tar.zst.sig",
+            "url": "https://repo.msys2.org/msys/x86_64/pkgconf-3.0.7-1-x86_64.pkg.tar.zst.sig",
+            "bytes": 566,
+            "sha256": "ab5b69850cd0d755bf62e89463ab840bafe8da9256be3d35e2d6df664176b5eb",
+            "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+            "redirect_hosts": [
+              "repo.msys2.org"
+            ]
+          },
+          "redirect_hosts": [
+            "repo.msys2.org"
+          ]
+        }
+      ],
+      "publisher": "MSYS2 developers; signed base by Christoph Reiter",
+      "purpose": "recipient native-build shell, make, pkgconf, NASM and zlib",
+      "detection": "exact base and installed-files provenance plus selected package versions/capabilities",
+      "post_install_check": "trusted offline five-package transaction, native tools and unchanged unrelated base package versions",
+      "license_evidence": "docs/installer-migration/work-orders/IM-MS-02.md",
+      "elevation": "none; reject elevated helper invocation; ordinary recipient owns protected private root",
+      "installer_arguments": [],
+      "success_exit_codes": [],
+      "reboot_behavior": "none",
+      "archive_extraction": "verified Python 3.11.9 stdlib helper; exact full inventory, detached signature before bash, local keyring initialization and one controlled first login",
+      "provenance_evidence": [
+        "docs/installer-migration/work-orders/IM-MS-02.md",
+        "docs/installer-migration/work-orders/IM-MS-08.md",
+        "docs/installer-migration/evidence-2026-10-01.md"
+      ],
+      "installed_files": [
+        {
+          "path": "usr/share/pacman/keyrings/msys2.gpg",
+          "sha256": "79cc43bd8b8a4e8c952340adc0ae93d3ff8e50c40f244321cf58fa014282f4ea",
+          "bytes": 54878
+        },
+        {
+          "path": "usr/share/pacman/keyrings/msys2-trusted",
+          "sha256": "a8d39040a7b6cc14bf4394b5d9c838443925c32b00a7d34e8729c972392dca04",
+          "bytes": 220
+        },
+        {
+          "path": "usr/share/pacman/keyrings/msys2-revoked",
+          "sha256": "62b67ba0217745c7df189092a70d6b7a5781577f6428a5391dccd897edb5756a",
+          "bytes": 164
+        },
+        {
+          "path": "usr/bin/bash.exe",
+          "sha256": "41b09f0a9c1c68fd65253a7e8087b3775f0af245b729ade74ca4425d14392c2d",
+          "bytes": 2452446
+        },
+        {
+          "path": "usr/bin/pacman.exe",
+          "sha256": "209b2d527f359608cdb092515d3d99f46ac9d2209d130adced81a8cdd79057d8",
+          "bytes": 10765942
+        },
+        {
+          "path": "usr/bin/gpg.exe",
+          "sha256": "a5140c85353e8399da8d6bd7e3741524cd76a4e69be88af12042b1c9ef022984",
+          "bytes": 1130330
+        },
+        {
+          "path": "usr/bin/gpgv.exe",
+          "sha256": "f4d13204d77fdf63c02b0e6742230f83a833128c28f7b715709c2c63a96c427b",
+          "bytes": 514306
+        },
+        {
+          "path": "usr/bin/pacman-conf.exe",
+          "sha256": "12f4d59306fc83366a950923c9a70fa3c045fc0a6aa706e622ea30acff918726",
+          "bytes": 10713395
+        },
+        {
+          "path": "usr/bin/pacman-key",
+          "sha256": "5d2e5e67ca59e49e84d5f0b2f7e4166e3783f707cd2292c09ce61a79c7cc149f",
+          "bytes": 23497
+        },
+        {
+          "path": "etc/profile",
+          "sha256": "3368d6f88af0daf8f3df1eb563e6c351bf9e336f40b826bd94486c18183602ff",
+          "bytes": 5475
+        },
+        {
+          "path": "etc/post-install/07-pacman-key.post",
+          "sha256": "19badd8d5d7e0052028c466fc1eb7fcf8f7e1fb50cb832be389922047897ef3e",
+          "bytes": 300
+        },
+        {
+          "path": "var/lib/pacman/local/msys2-keyring-1~20260214-1/desc",
+          "sha256": "a72e90c5db7abb1280f295f51cc6c6d35c837d10f39d72d0379122bd9518014e",
+          "bytes": 342
+        }
+      ]
+    },
+    {
+      "identity": "Visual Studio 2022 Build Tools",
+      "version": "17.14.41",
+      "architecture": "x64",
+      "profile": "both",
+      "winget_id": "Microsoft.VisualStudio.2022.BuildTools",
+      "url": "https://download.visualstudio.microsoft.com/download/pr/bc92e2cb-33de-4a0c-995d-efa817f16b16/37bb0fb429d163ecebd272a865d11a37b906d152bef960da2ddb29c2e2fd6eeb/vs_BuildTools.exe",
+      "bytes": 4473792,
+      "sha256": "37bb0fb429d163ecebd272a865d11a37b906d152bef960da2ddb29c2e2fd6eeb",
+      "artifact_pin_status": "publisher_metadata_and_local_hash",
+      "delivery_classification": "BLOCKED",
+      "reason": "network bootstrapper components including VCTools and SDK remain unresolved; exact Build Tools and applicable SDK terms require explicit recipient consent before supported installation",
+      "redirect_hosts": [
+        "download.visualstudio.microsoft.com"
+      ]
+    },
+    {
+      "identity": "Windows SDK",
+      "version": "26100",
+      "architecture": "x64",
+      "profile": "both",
+      "delivery_classification": "BLOCKED",
+      "reason": "official local layout verified; recipient acquisition, terms, and clean-machine installation remain unqualified"
+    },
+    {
+      "identity": "Python",
+      "version": "3.11.9",
+      "architecture": "x64",
+      "profile": "both",
+      "winget_id": "Python.Python.3.11",
+      "url": "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe",
+      "bytes": 26216840,
+      "sha256": "5ee42c4eee1e6b4464bb23722f90b45303f79442df63083f05322f1785f5fdde",
+      "artifact_pin_status": "official_size_winget_hash_and_local_hash",
+      "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+      "reason": "Exact official Python 3.11.9 acquisition and consented ordinary-guest helper installation/capability verified (IM-PY-01/02). Explicit recipient terms consent remains mandatory; exact whole-wizard lifecycle qualification remains pending (IM-PY-04, IM-DEP-01).",
+      "redirect_hosts": [
+        "www.python.org"
+      ],
+      "publisher": "Python Software Foundation",
+      "purpose": "exact x64 interpreter, headers and import libraries for native source build",
+      "filename": "python-3.11.9-amd64.exe",
+      "signature_publisher": "Python Software Foundation",
+      "elevation": "per-user; vendor runtime prerequisites may request elevation",
+      "detection": "PSF-signed registered interpreter with exact 3.11.9 x64 native capability checks",
+      "post_install_check": "native SSL/SQLite/compression, venv/ensurepip imports, Python.h/pyconfig.h/python311.lib and exact executable/base prefix",
+      "installer_arguments": [
+        "/passive",
+        "/norestart",
+        "/log",
+        "<unique-vendor-log>",
+        "InstallAllUsers=0",
+        "TargetDir=<fixed-user-Python311>",
+        "PrependPath=0",
+        "AppendPath=0",
+        "Include_exe=1",
+        "Include_lib=1",
+        "Include_dev=1",
+        "Include_pip=1",
+        "Include_launcher=0",
+        "InstallLauncherAllUsers=0",
+        "AssociateFiles=0",
+        "Shortcuts=0",
+        "Include_doc=0",
+        "Include_test=0",
+        "Include_tcltk=0",
+        "Include_tools=0",
+        "Include_debug=0",
+        "Include_symbols=0",
+        "CompileAll=0"
+      ],
+      "success_exit_codes": [
+        0
+      ],
+      "cancel_exit_codes": [
+        1602
+      ],
+      "reboot_exit_codes": [
+        3010
+      ],
+      "reboot_behavior": "pending; only resume verification after actual reboot",
+      "terms_url": "https://raw.githubusercontent.com/python/cpython/v3.11.9/LICENSE",
+      "terms_sha256": "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf",
+      "license_evidence": "docs/installer-migration/work-orders/IM-PY-01.md"
+    },
+    {
+      "identity": "NVIDIA GPU and driver",
+      "version": "compatible",
+      "architecture": "x64",
+      "profile": "nvidia",
+      "delivery_classification": "SYSTEM_PROVIDED",
+      "publisher": "NVIDIA",
+      "purpose": "optional hardware inference",
+      "detection": "nvidia-smi -L reports an NVIDIA GPU",
+      "post_install_check": "actual CUDA inference",
+      "reason": "the setup does not install or replace a display driver"
+    },
+    {
+      "identity": "NVIDIA CUDA Toolkit build components",
+      "version": "12.8.0",
+      "architecture": "x64",
+      "profile": "nvidia",
+      "url": "https://developer.download.nvidia.com/compute/cuda/12.8.0/local_installers/cuda_12.8.0_571.96_windows.exe",
+      "bytes": 3383388152,
+      "sha256": "540522788653606ace80869b65ac3acf8a13bea40545bd2f2af69393b5025a80",
+      "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+      "detection": "CUDA 12.8 nvcc, headers and static import libraries at validated root",
+      "installer_arguments": [
+        "-s",
+        "-n",
+        "nvcc_12.8",
+        "cudart_12.8",
+        "cublas_12.8",
+        "cublas_dev_12.8",
+        "nvrtc_12.8",
+        "nvrtc_dev_12.8",
+        "nvfatbin_12.8",
+        "nvjitlink_12.8",
+        "curand_12.8",
+        "curand_dev_12.8"
+      ],
+      "success_exit_codes": [
+        0,
+        3010
+      ],
+      "reboot_behavior": "3010 requires restart before capability check",
+      "post_install_check": "native CTranslate2 GPU build, CUDA DLL load and actual GPU inference",
+      "reason": "needed by current recipient-side CTranslate2 build; not the NVIDIA display driver",
+      "license_evidence": "release/scripts/prerequisite-terms.json#cuda",
+      "redirect_hosts": [
+        "developer.download.nvidia.com"
+      ]
+    }
+  ],
+  "native_build_assets": [
+    {
+      "filename": "ffmpeg-8.1.2.tar.xz",
+      "url": "https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz",
+      "bytes": 11710924,
+      "sha256": "464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c",
+      "profile": "both",
+      "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+      "redirect_hosts": [
+        "ffmpeg.org"
+      ],
+      "purpose": "recipient native build source",
+      "license_evidence": "v40 pinned build recipe and original source/notice records; Inno acquisition qualification pending",
+      "reason": "Exact official protected nine-input acquisition and nested terms/notices verified (IM-DL-06, IM-ACQ-18); recipient CPU build/import/inference/render evidence IM-CPU-23/26. Direct recipient acquisition permitted; no publisher redistribution approval or whole-wizard qualification (IM-DEP-01)."
+    },
+    {
+      "filename": "av-18.1.0.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/8d/f4/f22114d30d3435e38c6af2b4870f37b864403dca6ae7af747a289ce0a18e/av-18.1.0.tar.gz",
+      "bytes": 4451061,
+      "sha256": "47bfc286e1bc9de7ab4681fc2b575cd2460a66919d31ffe1bd5aa54fae531a28",
+      "profile": "both",
+      "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+      "redirect_hosts": [
+        "files.pythonhosted.org"
+      ],
+      "purpose": "recipient native build source",
+      "license_evidence": "v40 pinned build recipe and original source/notice records; Inno acquisition qualification pending",
+      "reason": "Exact official protected nine-input acquisition and nested terms/notices verified (IM-DL-06, IM-ACQ-18); recipient CPU build/import/inference/render evidence IM-CPU-23/26. Direct recipient acquisition permitted; no publisher redistribution approval or whole-wizard qualification (IM-DEP-01)."
+    },
+    {
+      "filename": "setuptools-80.9.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/a3/dc/17031897dae0efacfea57dfd3a82fdd2a2aeb58e0ff71b77b87e44edc772/setuptools-80.9.0-py3-none-any.whl",
+      "bytes": 1201486,
+      "sha256": "062d34222ad13e0cc312a4c02d73f059e86a4acbfbdea8f8f76b28c99f306922",
+      "profile": "both",
+      "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+      "redirect_hosts": [
+        "files.pythonhosted.org"
+      ],
+      "purpose": "recipient native build tooling wheel",
+      "license_evidence": "v40 pinned build recipe and original source/notice records; Inno acquisition qualification pending",
+      "reason": "Exact official protected nine-input acquisition and nested terms/notices verified (IM-DL-06, IM-ACQ-18); recipient CPU build/import/inference/render evidence IM-CPU-23/26. Direct recipient acquisition permitted; no publisher redistribution approval or whole-wizard qualification (IM-DEP-01)."
+    },
+    {
+      "filename": "cython-3.1.4-cp311-cp311-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/6d/58/7d9ae7944bcd32e6f02d1a8d5d0c3875125227d050e235584127f2c64ffd/cython-3.1.4-cp311-cp311-win_amd64.whl",
+      "bytes": 2713755,
+      "sha256": "60d2f192059ac34c5c26527f2beac823d34aaa766ef06792a3b7f290c18ac5e2",
+      "profile": "both",
+      "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+      "redirect_hosts": [
+        "files.pythonhosted.org"
+      ],
+      "purpose": "recipient native build tooling wheel",
+      "license_evidence": "v40 pinned build recipe and original source/notice records; Inno acquisition qualification pending",
+      "reason": "Exact official protected nine-input acquisition and nested terms/notices verified (IM-DL-06, IM-ACQ-18); recipient CPU build/import/inference/render evidence IM-CPU-23/26. Direct recipient acquisition permitted; no publisher redistribution approval or whole-wizard qualification (IM-DEP-01)."
+    },
+    {
+      "filename": "wheel-0.45.1-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/0b/2c/87f3254fd8ffd29e4c02732eee68a83a1d3c346ae39bc6822dcbcb697f2b/wheel-0.45.1-py3-none-any.whl",
+      "bytes": 72494,
+      "sha256": "708e7481cc80179af0e556bbf0cc00b8444c7321e2700b8d8580231d13017248",
+      "profile": "both",
+      "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+      "redirect_hosts": [
+        "files.pythonhosted.org"
+      ],
+      "purpose": "recipient native build tooling wheel",
+      "license_evidence": "v40 pinned build recipe and original source/notice records; Inno acquisition qualification pending",
+      "reason": "Exact official protected nine-input acquisition and nested terms/notices verified (IM-DL-06, IM-ACQ-18); recipient CPU build/import/inference/render evidence IM-CPU-23/26. Direct recipient acquisition permitted; no publisher redistribution approval or whole-wizard qualification (IM-DEP-01)."
+    },
+    {
+      "filename": "delvewheel-1.11.2-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/58/44/ba50aa4c7c70b802a4335d43b6053101736a2597bbe1c10d1202600357e1/delvewheel-1.11.2-py3-none-any.whl",
+      "bytes": 59935,
+      "sha256": "0e7fcd24d4cefb3285e1e40b9873e9164ebd310f7e2597015d3b6adbd1605d01",
+      "profile": "both",
+      "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+      "redirect_hosts": [
+        "files.pythonhosted.org"
+      ],
+      "purpose": "recipient native build tooling wheel",
+      "license_evidence": "v40 pinned build recipe and original source/notice records; Inno acquisition qualification pending",
+      "reason": "Exact official protected nine-input acquisition and nested terms/notices verified (IM-DL-06, IM-ACQ-18); recipient CPU build/import/inference/render evidence IM-CPU-23/26. Direct recipient acquisition permitted; no publisher redistribution approval or whole-wizard qualification (IM-DEP-01)."
+    },
+    {
+      "filename": "pefile-2024.8.26-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/54/16/12b82f791c7f50ddec566873d5bdd245baa1491bac11d15ffb98aecc8f8b/pefile-2024.8.26-py3-none-any.whl",
+      "bytes": 74766,
+      "sha256": "76f8b485dcd3b1bb8166f1128d395fa3d87af26360c2358fb75b80019b957c6f",
+      "profile": "both",
+      "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+      "redirect_hosts": [
+        "files.pythonhosted.org"
+      ],
+      "purpose": "recipient native build tooling wheel",
+      "license_evidence": "v40 pinned build recipe and original source/notice records; Inno acquisition qualification pending",
+      "reason": "Exact official protected nine-input acquisition and nested terms/notices verified (IM-DL-06, IM-ACQ-18); recipient CPU build/import/inference/render evidence IM-CPU-23/26. Direct recipient acquisition permitted; no publisher redistribution approval or whole-wizard qualification (IM-DEP-01)."
+    },
+    {
+      "filename": "cmake-4.4.3-py3-none-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/90/8c/e872d51e4cc7cd3fc159bd273baf5faab2de5a4f290e2728d14d551e0029/cmake-4.4.3-py3-none-win_amd64.whl",
+      "bytes": 42324327,
+      "sha256": "708ad6b662ee89d3eb2eac02a1afba20ca653139cbe769fed046124d0c6bc050",
+      "profile": "both",
+      "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+      "redirect_hosts": [
+        "files.pythonhosted.org"
+      ],
+      "purpose": "recipient native build tooling wheel",
+      "license_evidence": "v40 pinned build recipe and original source/notice records; Inno acquisition qualification pending",
+      "reason": "Exact official protected nine-input acquisition and nested terms/notices verified (IM-DL-06, IM-ACQ-18); recipient CPU build/import/inference/render evidence IM-CPU-23/26. Direct recipient acquisition permitted; no publisher redistribution approval or whole-wizard qualification (IM-DEP-01)."
+    },
+    {
+      "filename": "pybind11-3.1.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/33/fd/8762f7ee3e4e4be6d1d846cffb4916dd9bb02b2f800d3603718a0efe494c/pybind11-3.1.0-py3-none-any.whl",
+      "bytes": 319402,
+      "sha256": "b8488090f8acffbcb6b5d6a85571a6827a0a2981ffb75e5a0b27b87c4a6b7dd0",
+      "profile": "both",
+      "delivery_classification": "DIRECT_RECIPIENT_DOWNLOAD",
+      "redirect_hosts": [
+        "files.pythonhosted.org"
+      ],
+      "purpose": "recipient native build tooling wheel",
+      "license_evidence": "v40 pinned build recipe and original source/notice records; Inno acquisition qualification pending",
+      "reason": "Exact official protected nine-input acquisition and nested terms/notices verified (IM-DL-06, IM-ACQ-18); recipient CPU build/import/inference/render evidence IM-CPU-23/26. Direct recipient acquisition permitted; no publisher redistribution approval or whole-wizard qualification (IM-DEP-01)."
+    }
+  ]
+}

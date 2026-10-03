@@ -19,7 +19,7 @@ jobs:
       - name: Parse installer and launch scripts
         shell: pwsh
         run: |
-          foreach ($name in @('install.ps1', 'release/scripts/install-source-routed.ps1', 'release/scripts/install-source-build.ps1', 'release/scripts/build-native-from-source.ps1', 'release/scripts/native-wheel-cache.ps1', 'update.ps1', 'update-app.ps1', 'release/scripts/upstream-assets.ps1', 'Start-AutoClip.ps1', '.github/tests/Update.Tests.ps1', '.github/tests/AppUpdate.Tests.ps1', '.github/tests/InstallRetry.Tests.ps1', '.github/tests/GpuRuntime.Tests.ps1', '.github/tests/ReleasePin.Tests.ps1', '.github/tests/ReleaseDownload.Tests.ps1', '.github/tests/ReleaseWorkflowRouting.Tests.ps1', '.github/tests/SourceBuildPublicPin.Tests.ps1', '.github/tests/UpstreamAssets.Tests.ps1', '.github/tests/ExternalCacheForward.Tests.ps1', '.github/tests/NativeWheelCache.Tests.ps1', '.github/scripts/verify-public-release.ps1', '.github/scripts/verify-public-app-release.ps1')) {
+          foreach ($name in @('install.ps1', 'installer/preflight.ps1', 'tests/InstallerPreflight.Tests.ps1', 'tests/InstallerNoAcquisition.Tests.ps1', 'release/scripts/install-source-routed.ps1', 'release/scripts/install-source-build.ps1', 'release/scripts/build-native-from-source.ps1', 'release/scripts/native-wheel-cache.ps1', 'update.ps1', 'update-app.ps1', 'release/scripts/upstream-assets.ps1', 'Start-AutoClip.ps1', '.github/tests/Update.Tests.ps1', '.github/tests/AppUpdate.Tests.ps1', '.github/tests/InstallRetry.Tests.ps1', '.github/tests/GpuRuntime.Tests.ps1', '.github/tests/ReleasePin.Tests.ps1', '.github/tests/ReleaseDownload.Tests.ps1', '.github/tests/ReleaseWorkflowRouting.Tests.ps1', '.github/tests/SourceBuildPublicPin.Tests.ps1', '.github/tests/UpstreamAssets.Tests.ps1', '.github/tests/ExternalCacheForward.Tests.ps1', '.github/tests/NativeWheelCache.Tests.ps1', '.github/scripts/verify-public-release.ps1', '.github/scripts/verify-public-app-release.ps1')) {
             $tokens = $null
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $name), [ref]$tokens, [ref]$errors) | Out-Null
@@ -57,11 +57,13 @@ jobs:
           ./tests/NativeGitLongPaths.Tests.ps1
           ./tests/NativeBuildProgress.Tests.ps1
           ./tests/UpdateProgress.Tests.ps1
+          ./tests/InstallerPreflight.Tests.ps1
+          ./tests/InstallerNoAcquisition.Tests.ps1
       - name: Source-routed package regression cases
         shell: pwsh
         run: |
           python -m unittest discover -s .github/tests -p 'test_*.py'
-          python -m py_compile scripts/build-source-routed-release.py scripts/inventory-source-routed-release.py scripts/verify-native-source-wheels.py scripts/verify-install-wheels.py
+          python -m py_compile scripts/build-source-routed-release.py scripts/inventory-source-routed-release.py scripts/verify-native-source-wheels.py scripts/verify-install-wheels.py scripts/verify-installer-manifest.py scripts/build-inno.py
       - name: Publisher-cache updater forwarding
         shell: pwsh
         run: ./.github/tests/ExternalCacheForward.Tests.ps1

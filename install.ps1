@@ -3,16 +3,41 @@ param(
     [string]$ArchivePath,
     [string]$ExternalCache,
     [string]$NativeBuildRoot,
+    [string]$CpuNativeArtifactPath,
+    [string]$CpuNativeHelperSha256,
+    [string]$PythonPrerequisiteHelperSha256,
+    [string]$VcRuntimeHelperSha256,
     [string]$MsysBash,
+    [string]$MsysPackageReceiptPath,
+    [string]$MsysPackageReceiptSha256,
+    [string]$MsysBaseArchivePath,
+    [string]$GitExePath,
+    [string]$UvExePath,
     [string]$CudaRoot,
     [switch]$InstallNvidiaGpu,
     [switch]$AcceptNvidiaTerms,
+    [switch]$AcceptCublasTerms,
     [switch]$AcceptMicrosoftTerms,
     [switch]$NonInteractive,
     [switch]$OfflinePublisherCache,
     [switch]$InstallOllama,
     [switch]$PrerequisitesOnly,
-    [switch]$ReleaseInfo
+    [switch]$NoPrerequisiteAcquisition,
+    [switch]$AllowPinnedNvidiaAcquisition,
+    [string]$SecureAcquisitionManifestPath,
+    [string]$SecureAcquisitionManifestSha256,
+    [string]$SecureDownloaderSha256,
+    [string]$FfmpegArchivePath,
+    [string]$ToolArchiveHelperSha256,
+    [string]$RuntimeToolPathHelperSha256,
+    [string]$AppHealthHelperSha256,
+    [string]$SetupReceiptHelperSha256,
+    [string]$BootstrapIdentitySha256,
+    [string]$CancelPath,
+    [switch]$SkipDesktopShortcut,
+    [switch]$ReleaseInfo,
+    [switch]$ShowCublasTerms,
+    [string]$TermsRoot
 )
 
 $ErrorActionPreference = 'Stop'
@@ -71,6 +96,627 @@ $script:EmbeddedPrerequisiteTerms = @'
 }
 
 '@
+function Assert-AutoClipSecurePath([string]$Path) {
+    if ($Path -notmatch '^[A-Za-z]:[\\/]' -or $Path.Contains('"') -or
+        $Path -match '(^|[\\/])\.\.?([\\/]|$)' -or $Path.Substring(3).Contains(':')) {
+        throw 'Secure acquisition requires an absolute regular local path.'
+    }
+    $cursor = [IO.Path]::GetFullPath($Path)
+    while ($cursor) {
+        if ((Test-Path -LiteralPath $cursor) -and
+            ((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw 'Secure acquisition path contains a reparse point.'
+        }
+        $next = Split-Path -Parent $cursor
+        if ($next -eq $cursor) { break }
+        $cursor = $next
+    }
+}
+
+function Read-AutoClipSecureInput([string]$Path, [string]$Sha256) {
+    Assert-AutoClipSecurePath $Path
+    if ($Sha256 -notmatch '^[a-fA-F0-9]{64}$' -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw 'Secure acquisition input pin is missing or invalid.'
+    }
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    $hasher = [Security.Cryptography.SHA256]::Create()
+    try { $hash = [BitConverter]::ToString($hasher.ComputeHash($bytes)).Replace('-', '') }
+    finally { $hasher.Dispose() }
+    if ($hash -ne $Sha256) { throw 'Secure acquisition input SHA-256 changed or differs.' }
+    return ,$bytes
+}
+
+function Get-AutoClipMsysElevation {
+    $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+    $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Assert-AutoClipBuildCancellation {
+    if (-not $CancelPath) { return }
+    Assert-AutoClipSecurePath $CancelPath
+    Assert-AutoClipMsysProtectedPath (Split-Path -Parent $CancelPath) -RequireProtected
+    if (Test-Path -LiteralPath $CancelPath) {
+        Assert-AutoClipMsysProtectedPath $CancelPath
+        if (-not (Test-Path -LiteralPath $CancelPath -PathType Leaf)) { throw 'Invalid build cancellation signal.' }
+        throw 'AutoClip source build cancelled; incomplete staging and logs retained.'
+    }
+}
+
+function Invoke-AutoClipAppHealth([switch]$PreserveSourceReceipt) {
+    if ($PreserveSourceReceipt -and (-not $AppHealthHelperSha256 -or -not $CancelPath)) { throw 'Read-only health requires a pinned helper and external managed attempt.' }
+    if (-not $AppHealthHelperSha256) {
+        if ($CancelPath) { throw 'Managed source builds require a pinned app health helper.' }
+        return
+    }
+    Assert-AutoClipBuildCancellation
+    $helper = Join-Path $PSScriptRoot 'verify-installed-app.ps1'
+    if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) { $helper = Join-Path $PSScriptRoot 'installer/verify-installed-app.ps1' }
+    Assert-AutoClipMsysProtectedPath $helper
+    $helperBytes = Read-AutoClipSecureInput $helper $AppHealthHelperSha256
+    $parameters = @{ InstallRoot = $InstallRoot; ManifestSha256 = $expectedManifestSha256 }
+    if ($CancelPath) {
+        $attempt = Split-Path -Parent $CancelPath
+        Assert-AutoClipMsysProtectedPath $attempt -RequireProtected
+        if ($PreserveSourceReceipt) {
+            $sourceRoot = ([IO.Path]::GetFullPath($InstallRoot)).TrimEnd('\')
+            if (([IO.Path]::GetFullPath($attempt)).TrimEnd('\') -ieq $sourceRoot -or
+                ([IO.Path]::GetFullPath($attempt)).StartsWith($sourceRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Read-only health attempt must be outside the completed source layer.' }
+        }
+        $parameters.ResultPath = Join-Path $attempt 'health-result.json'
+        Assert-AutoClipSecurePath $parameters.ResultPath
+        if (Test-Path -LiteralPath $parameters.ResultPath) { throw 'Refusing to reuse an existing health result.' }
+    }
+    $rows = @(& ([scriptblock]::Create([Text.Encoding]::UTF8.GetString($helperBytes).TrimStart([char]0xFEFF))) @parameters)
+    Assert-AutoClipBuildCancellation
+    if ($rows.Count -ne 1 -or $rows[0].status -cne 'VERIFIED_HEALTH_HOME' -or $rows[0].result_path -isnot [string]) { throw 'App health helper did not return one verified result.' }
+    $resultPath = [string]$rows[0].result_path
+    Assert-AutoClipSecurePath $resultPath
+    if ($CancelPath -and $resultPath -ine $parameters.ResultPath) { throw 'App health result escaped this attempt.' }
+    Assert-AutoClipMsysProtectedPath (Split-Path -Parent $resultPath) -RequireProtected
+    Assert-AutoClipMsysProtectedPath $resultPath
+    if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) { throw 'App health result is not a regular file.' }
+    $stream = [IO.File]::Open($resultPath, 'Open', 'Read', 'Read')
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        if ($stream.Length -gt 65536) { throw 'App health result exceeds the bounded receipt size.' }
+        $resultSha = [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '').ToLowerInvariant()
+        $stream.Position = 0
+        $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::UTF8, $true, 1024, $true)
+        try { $result = $reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }
+        if ($result.schema_version -ne 1 -or $result.status -cne 'VERIFIED_HEALTH_HOME' -or
+            $result.install_root -ine ([IO.Path]::GetFullPath($InstallRoot)) -or
+            $result.manifest_sha256 -ine $expectedManifestSha256 -or $result.isolated_health_only -isnot [bool] -or $result.isolated_health_only -ne $true -or
+            $result.desktop_tested -isnot [bool] -or $result.media_tested -isnot [bool] -or $result.model_inference_tested -isnot [bool] -or
+            $result.desktop_tested -ne $false -or $result.media_tested -ne $false -or $result.model_inference_tested -ne $false -or
+            $result.child.exit_code -ne 0 -or $result.child.receipt.health_status -ne 200 -or $result.child.receipt.home_status -ne 200) { throw 'App health result identity/status differs.' }
+        $healthDescriptor = [ordered]@{
+            result_path = $resultPath; bytes = $stream.Length; sha256 = $resultSha
+            install_root = $result.install_root; manifest_sha256 = $result.manifest_sha256; status = $result.status
+        }
+        Assert-AutoClipBuildCancellation
+        if ($PreserveSourceReceipt) { return [pscustomobject]$healthDescriptor }
+        $receiptPath = Join-Path $InstallRoot 'native-build-receipt.json'
+        Assert-AutoClipMsysProtectedPath $receiptPath
+        $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+        $receipt | Add-Member -NotePropertyName setup_app_health -NotePropertyValue $healthDescriptor -Force
+        Assert-AutoClipBuildCancellation
+        Write-AutoClipCompletionFile $receiptPath ([Text.Encoding]::UTF8.GetBytes(($receipt | ConvertTo-Json -Depth 8))) -ReplaceExisting
+    } finally { $sha.Dispose(); $stream.Dispose() }
+    Assert-AutoClipBuildCancellation
+}
+
+function Invoke-AutoClipBuildCommit([scriptblock]$Action) {
+    if (-not $CancelPath) { & $Action; return }
+    Assert-AutoClipSecurePath $CancelPath
+    if ([IO.Path]::GetFileName($CancelPath) -ne 'cancel.txt') { throw 'Completion requires the fixed protected cancellation path.' }
+    $attempt = Split-Path -Parent $CancelPath
+    Assert-AutoClipMsysProtectedPath $attempt -RequireProtected
+    $lockPath = Join-Path $attempt 'decision.lock'
+    Assert-AutoClipMsysProtectedPath $lockPath
+    if (-not (Test-Path -LiteralPath $lockPath -PathType Leaf)) { throw 'Completion decision lock is missing.' }
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    $decision = $null
+    while (-not $decision) {
+        try { $decision = [IO.File]::Open($lockPath, 'Open', 'ReadWrite', 'None') }
+        catch [IO.IOException] { if ($watch.Elapsed.TotalSeconds -ge 10) { throw 'Completion decision lock remains busy.' }; Start-Sleep -Milliseconds 100 }
+    }
+    try {
+        if ($decision.Length -ne 0) { throw 'Completion decision lock changed.' }
+        Assert-AutoClipBuildCancellation
+        $commitPath = Join-Path $attempt 'commit.json'
+        Assert-AutoClipSecurePath $commitPath
+        if (Test-Path -LiteralPath $commitPath) { throw 'Completion decision already exists; state preserved.' }
+        foreach ($pin in @($expectedArchiveSha256, $expectedManifestSha256, $SecureAcquisitionManifestSha256)) {
+            if ($pin -notmatch '^[a-fA-F0-9]{64}$') { throw 'Completion input binding is missing.' }
+        }
+        $file = [IO.File]::Open($commitPath, 'CreateNew', 'Write', 'None')
+        try {
+            $bytes = [Text.Encoding]::UTF8.GetBytes(([ordered]@{schema_version=1;decision='COMMIT_STARTED';install_root=$InstallRoot;archive_sha256=$expectedArchiveSha256;release_manifest_sha256=$expectedManifestSha256;dependency_manifest_sha256=$SecureAcquisitionManifestSha256}|ConvertTo-Json))
+            $file.Write($bytes, 0, $bytes.Length)
+        } finally { $file.Dispose() }
+        & $Action
+    } finally { $decision.Dispose() }
+}
+
+function Assert-AutoClipMsysProtectedPath([string]$Path, [switch]$RequireProtected) {
+    Assert-AutoClipSecurePath $Path
+    $acl = Get-Acl -LiteralPath $Path
+    $trusted = @([Security.Principal.WindowsIdentity]::GetCurrent().User.Value, 'S-1-5-18', 'S-1-5-32-544')
+    if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin $trusted -or
+        ($RequireProtected -and -not $acl.AreAccessRulesProtected)) { throw 'MSYS2 source path requires recipient ownership and protected DACL.' }
+    $writes = 278 -bor 64 -bor 65536 -bor 262144 -bor 524288 -bor 268435456 -bor 1073741824
+    $rules = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
+    if (-not $rules.Count) { throw 'MSYS2 source path has no qualifying DACL.' }
+    foreach ($rule in $rules) {
+        if ($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Value -notin $trusted -and
+            ([long]$rule.FileSystemRights -band $writes)) { throw 'MSYS2 source path grants untrusted write access.' }
+    }
+}
+
+function Get-AutoClipMsysCodePaths([string]$Root) {
+    $paths = @('etc/profile', 'etc/msystem', 'etc/bash.bashrc', 'msys2_shell.cmd')
+    $pending = @('usr/bin', 'ucrt64/bin', 'etc/profile.d', 'etc/post-install', 'etc/msystem.d')
+    while ($pending.Count) {
+        $directory = $pending[0]; $pending = @($pending | Select-Object -Skip 1)
+        Assert-AutoClipMsysProtectedPath (Join-Path $Root $directory)
+        foreach ($item in Get-ChildItem -LiteralPath (Join-Path $Root $directory) -Force) {
+            Assert-AutoClipMsysProtectedPath $item.FullName
+            $relative = $directory + '/' + $item.Name
+            if ($item.PSIsContainer) { $pending += $relative } else { $paths += $relative }
+        }
+    }
+    $paths
+}
+
+function Invoke-AutoClipMsysPython([string]$Executable, [string[]]$Arguments) {
+    $output = @(& $Executable @Arguments)
+    if ($LASTEXITCODE -ne 0) { throw 'Verified Python MSYS2 startup inspection failed.' }
+    $output
+}
+
+function Invoke-AutoClipMsysSource([scriptblock]$Action, [string[]]$ToolPaths) {
+    if (-not $MsysPackageReceiptPath -or -not $MsysPackageReceiptSha256 -or -not $MsysBaseArchivePath -or
+        -not $SecureAcquisitionManifestPath -or -not $SecureAcquisitionManifestSha256) {
+        throw 'Secure MSYS2 source build requires bound package receipt, manifest and base archive.'
+    }
+    if (Get-AutoClipMsysElevation) { throw 'Secure MSYS2 source builds require an ordinary user token.' }
+    $root = [IO.Path]::GetFullPath($msysRoot).TrimEnd('\')
+    if ([IO.Path]::GetFullPath($MsysBash) -ine (Join-Path $root 'usr/bin/bash.exe')) { throw 'MSYS2 bash must belong to the bound root.' }
+    Assert-AutoClipMsysProtectedPath (Split-Path -Parent $root) -RequireProtected
+    Assert-AutoClipMsysProtectedPath $root
+    Assert-AutoClipMsysProtectedPath (Split-Path -Parent $MsysPackageReceiptPath) -RequireProtected
+    $locks = New-Object 'System.Collections.Generic.List[System.IDisposable]'
+    $saved = @{}
+    try {
+        foreach ($path in @($SecureAcquisitionManifestPath, $MsysPackageReceiptPath, $MsysBaseArchivePath)) {
+            Assert-AutoClipMsysProtectedPath $path
+            $locks.Add([IO.File]::Open($path, 'Open', 'Read', 'Read'))
+        }
+        $manifest = [Text.Encoding]::UTF8.GetString((Read-AutoClipSecureInput $SecureAcquisitionManifestPath $SecureAcquisitionManifestSha256)) | ConvertFrom-Json
+        $receipt = [Text.Encoding]::UTF8.GetString((Read-AutoClipSecureInput $MsysPackageReceiptPath $MsysPackageReceiptSha256)) | ConvertFrom-Json
+        $baseRows = @($manifest.build_prerequisites | Where-Object identity -CEQ 'MSYS2')
+        if ($manifest.schema_version -isnot [int] -or $manifest.schema_version -ne 1 -or $baseRows.Count -ne 1) { throw 'Invalid MSYS2 manifest identity.' }
+        $base = $baseRows[0]
+        if ($base.version -cne '20260611' -or $base.filename -cne 'msys2-base-x86_64-20260611.tar.xz' -or
+            $base.artifact_kind -cne 'archive' -or $base.archive_format -cne 'tar.xz' -or
+            $base.delivery_classification -cne 'DIRECT_RECIPIENT_DOWNLOAD' -or
+            [IO.Path]::GetFileName($MsysBaseArchivePath) -cne $base.filename -or [long]$base.bytes -le 0 -or
+            (Get-Item -LiteralPath $MsysBaseArchivePath).Length -ne [long]$base.bytes) { throw 'MSYS2 base archive identity differs.' }
+        Read-AutoClipSecureInput $MsysBaseArchivePath $base.sha256 | Out-Null
+        $msysPrivateHome = Join-Path $root 'home/autoclip-base'
+        if ($receipt.schema_version -isnot [int] -or $receipt.schema_version -ne 1 -or $receipt.status -cne 'VERIFIED_PINNED_PACKAGES' -or
+            $receipt.root -ine $root -or $receipt.private_home -ine $msysPrivateHome -or
+            $receipt.manifest_sha256 -cne $SecureAcquisitionManifestSha256.ToLowerInvariant() -or
+            $receipt.base_receipt_sha256 -notmatch '^[a-f0-9]{64}$') { throw 'MSYS2 package receipt binding differs.' }
+        $expectedPackages = @($base.packages | ForEach-Object {
+            if ($_.identity -notmatch '^[a-z0-9_-]+$' -or $_.version -notmatch '^[A-Za-z0-9.+_-]+$') { throw ('Invalid MSYS2 package metadata: ' + ($_ | ConvertTo-Json -Compress)) }
+            $_.identity + ' ' + $_.version
+        })
+        if ($expectedPackages.Count -ne 5 -or @($base.packages.identity | Select-Object -Unique).Count -ne 5 -or
+            @($receipt.packages).Count -ne 5 -or @(Compare-Object $expectedPackages @($receipt.packages) -CaseSensitive).Count) { throw 'MSYS2 installed package versions differ.' }
+        $paths = @(Get-AutoClipMsysCodePaths $root)
+        $rows = @($receipt.post_install_code_files)
+        if ($rows.Count -ne $paths.Count -or @($rows.path | Select-Object -Unique).Count -ne $rows.Count -or
+            @(Compare-Object $paths @($rows.path) -CaseSensitive).Count) { throw 'MSYS2 post-install code closure differs.' }
+        foreach ($row in $rows) {
+            $path = Join-Path $root $row.path
+            Assert-AutoClipMsysProtectedPath $path
+            $locks.Add([IO.File]::Open($path, 'Open', 'Read', 'Read'))
+            if ([long]$row.bytes -lt 0 -or (Get-Item -LiteralPath $path).Length -ne [long]$row.bytes) { throw 'MSYS2 code size differs.' }
+            Read-AutoClipSecureInput $path $row.sha256 | Out-Null
+        }
+        Assert-AutoClipMsysProtectedPath $msysPrivateHome
+        $homeFiles = @(Get-ChildItem -LiteralPath $msysPrivateHome -Force)
+        if ($homeFiles.Count -ne 3 -or @($homeFiles | Where-Object PSIsContainer).Count -or
+            @(Compare-Object @('.bash_profile', '.bashrc', '.profile') @($homeFiles.Name) -CaseSensitive).Count) { throw 'Private HOME must contain exactly the three qualified startup files.' }
+        $helper = Join-Path $PSScriptRoot 'install-python.ps1'
+        if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) { $helper = Join-Path $PSScriptRoot 'installer/install-python.ps1' }
+        Assert-AutoClipSecurePath $helper
+        $pythonRows = @(Invoke-AutoClipMsysPython (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe') @('-NoProfile', '-NonInteractive', '-File', $helper, '-CheckOnly'))
+        if ($pythonRows.Count -ne 1) { throw 'Registered verified Python 3.11.9 is required.' }
+        $verifiedPython = [string]$pythonRows[0]
+        Assert-AutoClipSecurePath $verifiedPython
+        $inspect = @'
+import hashlib,json,sys,tarfile
+with tarfile.open(sys.argv[1], 'r:xz') as archive:
+    result=[]
+    for name in ('.bash_profile','.bashrc','.profile'):
+        members=[m for m in archive.getmembers() if m.name=='msys64/etc/skel/'+name]
+        if len(members)!=1 or not members[0].isfile(): raise ValueError('Invalid startup TAR member')
+        data=archive.extractfile(members[0]).read()
+        result.append(dict(path=name,bytes=len(data),sha256=hashlib.sha256(data).hexdigest()))
+    print(json.dumps(result))
+'@
+        $homeRows = (Invoke-AutoClipMsysPython $verifiedPython @('-I', '-B', '-c', $inspect, $MsysBaseArchivePath)) | ConvertFrom-Json
+        if ($homeRows.Count -ne 3 -or @($homeRows.path | Select-Object -Unique).Count -ne 3 -or
+            @(Compare-Object @('.bash_profile', '.bashrc', '.profile') @($homeRows.path) -CaseSensitive).Count) { throw 'Invalid authenticated HOME inventory.' }
+        foreach ($row in $homeRows) {
+            $path = Join-Path $msysPrivateHome $row.path
+            Assert-AutoClipMsysProtectedPath $path
+            $locks.Add([IO.File]::Open($path, 'Open', 'Read', 'Read'))
+            if ((Get-Item -LiteralPath $path).Length -ne [long]$row.bytes) { throw 'Private HOME startup size differs.' }
+            Read-AutoClipSecureInput $path $row.sha256 | Out-Null
+        }
+        if (@(Compare-Object $paths @(Get-AutoClipMsysCodePaths $root) -CaseSensitive).Count) { throw 'MSYS2 code closure changed during validation.' }
+        $controlledPaths = @((Join-Path $root 'ucrt64/bin'), (Join-Path $root 'usr/bin'), (Join-Path $env:SystemRoot 'System32'), (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0'), (Split-Path -Parent $verifiedPython))
+        foreach ($tool in $ToolPaths) { if ($tool) { Assert-AutoClipSecurePath $tool; $controlledPaths += Split-Path -Parent $tool } }
+        foreach ($path in $env:PATH.Split(';')) {
+            foreach ($programRoot in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+                if ($programRoot -and ($path.StartsWith($programRoot+'\Microsoft Visual Studio\', [StringComparison]::OrdinalIgnoreCase) -or
+                    $path.StartsWith($programRoot+'\Windows Kits\', [StringComparison]::OrdinalIgnoreCase))) {
+                    Assert-AutoClipSecurePath $path
+                    if (Test-Path -LiteralPath $path -PathType Container) { $controlledPaths += $path }
+                }
+            }
+        }
+        foreach ($path in $controlledPaths) { Assert-AutoClipSecurePath $path; if (-not (Test-Path -LiteralPath $path -PathType Container)) { throw 'Controlled MSYS2 PATH directory is absent.' } }
+        $names = @('PATH','BASH_ENV','ENV','GNUPGHOME','HOME','MSYSTEM','MSYS2_PATH_TYPE','SYSCONFDIR','CHERE_INVOKING','SHELLOPTS','BASHOPTS','CDPATH','GLOBIGNORE','PS1','XDG_CONFIG_HOME','ORIGINAL_PATH','CYG_SYS_BASHRC','MSYS2_PS1','MSYS2_ARG_CONV_EXCL','MSYS2_ENV_CONV_EXCL','MSYS_NO_PATHCONV','GIT_CONFIG_COUNT','GIT_CONFIG_KEY_0','GIT_CONFIG_VALUE_0') + @(Get-ChildItem Env: | Where-Object { $_.Name -like 'BASH_FUNC_*' -or $_.Name -like 'GIT_CONFIG*' } | ForEach-Object Name)
+        foreach ($name in ($names | Select-Object -Unique)) { $saved[$name] = [Environment]::GetEnvironmentVariable($name, 'Process'); [Environment]::SetEnvironmentVariable($name, $null, 'Process') }
+        $env:PATH = ($controlledPaths | Select-Object -Unique) -join ';'
+        $env:HOME = '/' + $msysPrivateHome.Substring(0,1).ToLowerInvariant() + $msysPrivateHome.Substring(2).Replace('\','/')
+        $env:MSYSTEM = 'UCRT64'; $env:MSYS2_PATH_TYPE = 'inherit'; $env:CHERE_INVOKING = '1'
+        $env:GIT_CONFIG_COUNT = '1'; $env:GIT_CONFIG_KEY_0 = 'core.longpaths'; $env:GIT_CONFIG_VALUE_0 = 'true'
+        & $Action
+    } finally {
+        if ($saved.Count) {
+            Get-ChildItem Env: | Where-Object { $_.Name -like 'BASH_FUNC_*' -or $_.Name -like 'GIT_CONFIG*' } | ForEach-Object { [Environment]::SetEnvironmentVariable($_.Name, $null, 'Process') }
+            foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
+        }
+        foreach ($lock in $locks) { $lock.Dispose() }
+    }
+}
+
+function Initialize-AutoClipSecureAcquisition {
+    param([string]$ManifestPath, [string]$ManifestSha256, [string]$DownloaderSha256, [switch]$NoPrerequisiteAcquisition)
+    $present = @($ManifestPath, $ManifestSha256, $DownloaderSha256 | Where-Object { $_ }).Count
+    if (-not $present) { return $null }
+    if ($present -ne 3 -or -not $NoPrerequisiteAcquisition) {
+        throw 'All three secure acquisition inputs require NoPrerequisiteAcquisition.'
+    }
+    $helper = Join-Path $PSScriptRoot 'download-artifact.ps1'
+    Read-AutoClipSecureInput $ManifestPath $ManifestSha256 | Out-Null
+    Read-AutoClipSecureInput $helper $DownloaderSha256 | Out-Null
+    $script:SecureAcquisition = [pscustomobject]@{
+        ManifestPath = $ManifestPath; ManifestSha256 = $ManifestSha256
+        DownloaderPath = $helper; DownloaderSha256 = $DownloaderSha256
+    }
+    $script:SecurePublisherManifestPath = $null
+    return {
+        param($Uri, $Destination)
+        # These are the actual Get-PinnedUpstreamAsset caller's bound parameters.
+        if ([string]$Sha256 -notmatch '^[a-fA-F0-9]{64}$' -or [long]$Size -le 0) {
+            throw 'Secure download callback is missing the caller size/SHA-256.'
+        }
+        Invoke-AutoClipSecureDownload -Uri $Uri -Sha256 $Sha256 -Size $Size -Destination $Destination
+    }
+}
+
+function Get-AutoClipSecureDownloadDefaults {
+    param($Existing, [scriptblock]$DownloadScript)
+    $defaults = @{}
+    foreach ($key in $Existing.Keys) { $defaults[$key] = $Existing[$key] }
+    # PowerShell evaluates scriptblock defaults as factories; return the callback itself.
+    $factory = { $DownloadScript }.GetNewClosure()
+    $defaults['Get-PinnedUpstreamAsset:DownloadScript'] = $factory
+    $defaults['Get-ContentAddressedAsset:DownloadScript'] = $factory
+    return $defaults
+}
+
+function Initialize-AutoClipPublisherCpu([string]$Path,[string]$HelperPin,[string]$PythonPin,[bool]$Gpu,[bool]$Guard) {
+    $outer = $null
+    if ($SecureAcquisition) {
+        $outer = [Text.Encoding]::UTF8.GetString((Read-AutoClipSecureInput $SecureAcquisition.ManifestPath $SecureAcquisition.ManifestSha256)).TrimStart([char]0xFEFF) | ConvertFrom-Json
+    }
+    $row = $outer.cpu_native_artifact
+    if ($Gpu -and -not $Path -and -not $HelperPin -and -not $PythonPin) { return $null }
+    if (-not $row -and -not $Path -and -not $HelperPin -and -not $PythonPin) { return $null }
+    if (-not $Guard -or -not $SecureAcquisition -or -not $row -or $Gpu -or -not $Path -or
+        $HelperPin -notmatch '^[a-fA-F0-9]{64}$' -or $PythonPin -notmatch '^[a-fA-F0-9]{64}$') {
+        throw 'Publisher CPU requires its guarded manifest, archive and both pinned helpers; NVIDIA selection is incompatible.'
+    }
+    if ($outer.schema_version -ne 1 -or $row.profile -cne 'cpu' -or $row.delivery_classification -cne 'DIRECT_RECIPIENT_DOWNLOAD' -or
+        [string]$row.identity -cnotmatch '^[a-z0-9][a-z0-9._-]+$' -or [string]$row.filename -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._+-]*\.zip$' -or
+        [string]$row.sha256 -notmatch '^[a-fA-F0-9]{64}$' -or [long]$row.bytes -le 0 -or
+        [string]$row.url -notmatch '^https://' -or [string]$row.qualification_receipt_sha256 -notmatch '^[a-fA-F0-9]{64}$' -or
+        [string]$row.qualification_receipt_path -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]+$' -or
+        [string]$row.qualification_receipt_path -match '(^|/)\.\.?(/|$)') {
+        throw 'Publisher CPU descriptor is blocked or invalid.'
+    }
+    Assert-AutoClipSecurePath $Path
+    return $row
+}
+
+function Assert-AutoClipPublisherCpuRelease($Descriptor,$Release,[bool]$Gpu = $false) {
+    if (-not $Descriptor) {
+        if ($Gpu -and $Release.native_build.delivery -ceq 'publisher_cpu_with_source_nvidia' -and $Release.native_build.cpu_artifact) { return }
+        if ($Release.native_build.cpu_artifact -or $Release.native_build.delivery -eq 'publisher_cpu_with_source_nvidia') { throw 'Publisher CPU release requires the guarded CPU descriptor.' }
+        return
+    }
+    if ($Release.runtime_id -cne $Descriptor.identity -or $Release.native_build.delivery -cne 'publisher_cpu_with_source_nvidia') { throw 'Publisher CPU runtime identity or delivery differs.' }
+    foreach ($field in @('identity','filename','url','bytes','sha256','profile')) {
+        if ([string]$Release.native_build.cpu_artifact.$field -cne [string]$Descriptor.$field) { throw "Publisher CPU release pin differs: $field" }
+    }
+}
+
+function Invoke-AutoClipPinnedHelper([string]$Path,[string]$Pin,[scriptblock]$Action) {
+    Assert-AutoClipSecurePath $Path
+    Assert-AutoClipMsysProtectedPath $Path
+    $stream = [IO.File]::Open($Path,'Open','Read','Read')
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        if ([BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-','') -ne $Pin) { throw 'Pinned publisher CPU helper differs.' }
+        & $Action $Path
+    } finally { $sha.Dispose(); $stream.Dispose() }
+}
+
+function Invoke-AutoClipPublisherVc {
+    param([string]$StateDirectory, [switch]$CheckOnly, [string]$InstallerPath)
+    if (-not $SecureAcquisition -or $VcRuntimeHelperSha256 -notmatch '^[a-fA-F0-9]{64}$') { throw 'Publisher CPU requires its pinned protected VC helper.' }
+    $helper = Join-Path $PSScriptRoot 'install-vc-runtime.ps1'
+    if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) { $helper = Join-Path $PSScriptRoot 'installer/install-vc-runtime.ps1' }
+    $arguments = @('-ManifestPath', $SecureAcquisition.ManifestPath, '-ManifestSha256', $SecureAcquisition.ManifestSha256, '-StateDirectory', $StateDirectory)
+    if ($CheckOnly) { $arguments += '-CheckOnly' }
+    else {
+        $arguments += @('-InstallerPath', $InstallerPath)
+        if ($AcceptMicrosoftTerms) { $arguments += '-AcceptMicrosoftTerms' }
+    }
+    $result = Invoke-AutoClipPinnedHelper $helper $VcRuntimeHelperSha256 {
+        param($pinnedPath)
+        $lines = @(& (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe') -NoProfile -NonInteractive -File $pinnedPath @arguments)
+        $code = $LASTEXITCODE
+        if ($lines.Count -ne 1) { throw 'VC helper returned invalid framing.' }
+        $record = $lines[0] | ConvertFrom-Json
+        if ($record.schema_version -ne 1 -or $record.exit_code -ne $code -or
+            ($record.status -ceq 'ready' -and $code -ne 0) -or
+            ($record.status -ceq 'missing' -and $code -ne 2)) { throw 'VC helper returned inconsistent status.' }
+        if ($record.status -ceq 'ready' -and $code -eq 0) { return $record }
+        if ($CheckOnly -and $record.status -ceq 'missing' -and $code -eq 2) { return $record }
+        if ($code -eq 3010) { throw 'Microsoft VC Runtime requires a Windows restart; rerun the same installer after restarting.' }
+        throw ('Protected VC preparation failed: ' + $record.status + '; ' + $record.message)
+    }
+    return $result
+}
+
+function Publish-AutoClipCpuWheel([string]$Stage,[string]$Destination,$Wheel,[string[]]$Names) {
+    if ([string]$Wheel.filename -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._+-]*\.whl$' -or $Wheel.filename -cnotin $Names) { throw 'Publisher CPU wheel name differs from release.' }
+    $source = Join-Path $Stage $Wheel.filename
+    $bytes = Read-AutoClipSecureInput $source $Wheel.sha256
+    if ($bytes.Length -ne [long]$Wheel.bytes) { throw 'Publisher CPU staged wheel size differs.' }
+    $path = Join-Path $Destination $Wheel.filename
+    Assert-AutoClipSecurePath $path
+    Assert-AutoClipMsysProtectedPath $Destination
+    if (Test-Path -LiteralPath $path) {
+        $existing = Read-AutoClipSecureInput $path $Wheel.sha256
+        if ($existing.Length -ne $bytes.Length) { throw 'Existing publisher CPU wheel size differs.' }
+        return
+    }
+    $pending = Join-Path $Destination ('.cpu-wheel-' + [guid]::NewGuid().ToString('N') + '.pending')
+    Assert-AutoClipSecurePath $pending
+    $stream = [IO.File]::Open($pending,'CreateNew','Write','None')
+    try {
+        try { $stream.Write($bytes,0,$bytes.Length) } finally { $stream.Dispose() }
+        Assert-AutoClipSecurePath $path
+        [IO.File]::Move($pending,$path)
+    } finally {
+        if ([IO.File]::Exists($pending)) { Assert-AutoClipSecurePath $pending; [IO.File]::Delete($pending) }
+    }
+}
+
+function Invoke-AutoClipSecureDownload {
+    param([string]$Uri, [string]$Sha256, [long]$Size, [string]$Destination)
+    if (-not $SecureAcquisition) { throw 'Secure acquisition was not initialized.' }
+    $context = $SecureAcquisition
+    $outerBytes = Read-AutoClipSecureInput $context.ManifestPath $context.ManifestSha256
+    $helperBytes = Read-AutoClipSecureInput $context.DownloaderPath $context.DownloaderSha256
+    $outer = [Text.Encoding]::UTF8.GetString($outerBytes).TrimStart([char]0xFEFF) | ConvertFrom-Json
+    if ($outer.schema_version -ne 1) { throw 'Unsupported secure acquisition manifest.' }
+    $pins = @($outer.build_prerequisites) + @($outer.external_assets) + @($outer.native_build_assets)
+    if ($outer.cpu_native_artifact) { $pins += $outer.cpu_native_artifact }
+    if ($outer.target_release) { $pins += $outer.target_release }
+    $matches = @($pins | Where-Object { $_ -and [string]$_.url -ceq $Uri -and [long]$_.bytes -eq $Size -and [string]$_.sha256 -eq $Sha256 } | ForEach-Object {
+        [pscustomobject]@{ Pin = $_; Identity = $(if ($_.identity) { $_.identity } elseif ($_.id) { $_.id } else { $_.filename }); Publisher = $false }
+    })
+    $publisherPath = $SecurePublisherManifestPath
+    if ($publisherPath) {
+        if ($outer.publisher_wheels.manifest_path -ne 'publisher-wheel-manifest.json') { throw 'Unsupported publisher manifest location.' }
+        $publisherBytes = Read-AutoClipSecureInput $publisherPath ([string]$outer.publisher_wheels.sha256)
+        $publisher = [Text.Encoding]::UTF8.GetString($publisherBytes).TrimStart([char]0xFEFF) | ConvertFrom-Json
+        if ($publisher.schema_version -ne 1 -or @($publisher.wheels).Count -ne [int]$outer.publisher_wheels.count) { throw 'Unsupported pinned publisher manifest.' }
+        $matches += @($publisher.wheels | Where-Object { [string]$_.url -ceq $Uri -and [long]$_.bytes -eq $Size -and [string]$_.sha256 -eq $Sha256 } | ForEach-Object {
+            [pscustomobject]@{ Pin = $outer.publisher_wheels; Identity = $_.filename; Publisher = $true }
+        })
+    }
+    if ($matches.Count -ne 1 -or $matches[0].Pin.delivery_classification -ne 'DIRECT_RECIPIENT_DOWNLOAD') {
+        throw "Requested URI/size/SHA-256 does not match exactly one approved artifact: $Uri ($Size bytes, $Sha256)."
+    }
+    Assert-AutoClipSecurePath $Destination
+    $stage = Join-Path ([IO.Path]::GetFullPath($env:TEMP)) ('autoclip-secure-' + [guid]::NewGuid().ToString('N'))
+    Assert-AutoClipSecurePath $stage
+    [IO.Directory]::CreateDirectory($stage) | Out-Null
+    try {
+        # Execute only bytes just verified against the fixed sibling helper pin.
+        . ([scriptblock]::Create([Text.Encoding]::UTF8.GetString($helperBytes).TrimStart([char]0xFEFF)))
+        $verifiedManifest = Join-Path $stage 'manifest.json'
+        [IO.File]::WriteAllBytes($verifiedManifest, $outerBytes)
+        $parameters = @{ ManifestPath = $verifiedManifest; Identity = [string]$matches[0].Identity; DestinationPath = (Join-Path $stage 'artifact.bin') }
+        if ($matches[0].Publisher) {
+            $verifiedPublisher = Join-Path $stage 'publisher-wheel-manifest.json'
+            [IO.File]::WriteAllBytes($verifiedPublisher, $publisherBytes)
+            $parameters.PublisherManifestPath = $verifiedPublisher
+        }
+        $downloadedPath = Get-InstallerArtifact @parameters
+        Assert-AutoClipSecurePath $downloadedPath
+        if ([IO.Path]::GetFullPath($downloadedPath) -ne $parameters.DestinationPath -or
+            (Get-Item -LiteralPath $downloadedPath).Length -ne $Size -or
+            (Get-FileHash -LiteralPath $downloadedPath -Algorithm SHA256).Hash -ne $Sha256) {
+            throw 'Protected downloader returned unexpected bytes or path.'
+        }
+        Assert-AutoClipSecurePath $Destination
+        [IO.File]::Copy($downloadedPath, $Destination, $false)
+    } finally {
+        Assert-AutoClipSecurePath $stage
+        Remove-Item -LiteralPath $stage -Recurse -Force
+    }
+}
+
+function Initialize-AutoClipFfmpeg {
+    param([string]$ArchivePath, [string]$ArchiveHelperSha256, [string]$RuntimeHelperSha256, [switch]$SecureRoute)
+    $count = @($ArchivePath, $ArchiveHelperSha256, $RuntimeHelperSha256 | Where-Object { $_ }).Count
+    if (-not $SecureRoute -and -not $count) { return $null }
+    if (-not $SecureRoute -or $count -ne 3) { throw 'All three FFmpeg inputs require the guarded acquisition route.' }
+    $archiveHelper = Join-Path $PSScriptRoot 'install-tool-archive.ps1'
+    $runtimeHelper = Join-Path $PSScriptRoot 'install-runtime-toolpath.ps1'
+    $helperBytes = Read-AutoClipSecureInput $archiveHelper $ArchiveHelperSha256
+    Read-AutoClipSecureInput $runtimeHelper $RuntimeHelperSha256 | Out-Null
+    $manifestBytes = Read-AutoClipSecureInput $SecureAcquisition.ManifestPath $SecureAcquisition.ManifestSha256
+    $manifest = [Text.Encoding]::UTF8.GetString($manifestBytes).TrimStart([char]0xFEFF) | ConvertFrom-Json
+    $pins = @($manifest.build_prerequisites | Where-Object identity -ceq 'Gyan FFmpeg')
+    if ($manifest.schema_version -ne 1 -or $pins.Count -ne 1 -or $pins[0].delivery_classification -cne 'DIRECT_RECIPIENT_DOWNLOAD' -or
+        $pins[0].version -cne '9.0.1' -or $pins[0].architecture -cne 'x64' -or
+        $pins[0].url -cne 'https://github.com/GyanD/codexffmpeg/releases/download/9.0.1/ffmpeg-9.0.1-essentials_build.zip' -or
+        $pins[0].bytes -ne 111253802 -or $pins[0].sha256 -cne 'fec81ae03971d9dd4be3ebe02e263bd2ec1d789483f931bdba5f5715e65da2e9') {
+        throw 'The exact approved FFmpeg essentials archive pin is unavailable.'
+    }
+    $archiveBytes = Read-AutoClipSecureInput $ArchivePath ([string]$pins[0].sha256)
+    if ($archiveBytes.Length -ne [long]$pins[0].bytes) { throw 'FFmpeg archive byte length differs.' }
+    $stage = Join-Path ([IO.Path]::GetFullPath($env:TEMP)) ('autoclip-ffmpeg-' + [guid]::NewGuid().ToString('N'))
+    Assert-AutoClipSecurePath $stage
+    [IO.Directory]::CreateDirectory($stage) | Out-Null
+    try {
+        $snapshot = Join-Path $stage 'manifest.json'
+        $zip = Join-Path $stage 'ffmpeg.zip'
+        $extraction = Join-Path $stage 'extracted'
+        [IO.File]::WriteAllBytes($snapshot, $manifestBytes)
+        [IO.File]::WriteAllBytes($zip, $archiveBytes)
+        $executable = & ([scriptblock]::Create([Text.Encoding]::UTF8.GetString($helperBytes).TrimStart([char]0xFEFF))) -Identity 'Gyan FFmpeg' -ArchivePath $zip -ManifestPath $snapshot -DestinationRoot $extraction
+        Assert-AutoClipSecurePath $executable
+        if ($executable -ne (Join-Path $extraction 'ffmpeg-9.0.1-essentials_build\bin\ffmpeg.exe')) { throw 'Unexpected verified FFmpeg executable path.' }
+        if ($executable.Contains(';')) { throw 'Verified FFmpeg process PATH cannot contain a delimiter.' }
+        [IO.File]::Delete($zip)
+        $owner = [ordered]@{ schema_version = 1; identity = 'AutoClip retained FFmpeg'; archive_sha256 = [string]$pins[0].sha256
+            manifest_sha256 = $SecureAcquisition.ManifestSha256.ToLowerInvariant(); archive_helper_sha256 = $ArchiveHelperSha256.ToLowerInvariant(); runtime_helper_sha256 = $RuntimeHelperSha256.ToLowerInvariant() }
+        [pscustomobject]@{ StageRoot = $stage; ExtractionRoot = $extraction; Bin = (Split-Path -Parent $executable); Inventory = @(Get-AutoClipFfmpegInventory $extraction)
+            RuntimeHelperPath = $runtimeHelper; RuntimeHelperSha256 = $RuntimeHelperSha256
+            ManifestPath = $SecureAcquisition.ManifestPath; ManifestSha256 = $SecureAcquisition.ManifestSha256
+            Owner = $owner; OwnerBytes = [Text.Encoding]::UTF8.GetBytes(($owner | ConvertTo-Json -Compress))
+            ExistingReceiptHash = $null }
+    } catch {
+        Assert-AutoClipSecurePath $stage
+        Remove-Item -LiteralPath $stage -Recurse -Force
+        throw
+    }
+}
+
+function Get-AutoClipFfmpegInventory([string]$Root) {
+    Assert-AutoClipSecurePath $Root
+    $prefix = [IO.Path]::GetFullPath($Root).TrimEnd('\') + '\'
+    $pending = New-Object 'System.Collections.Generic.Stack[string]'
+    $pending.Push($Root)
+    $items = @()
+    while ($pending.Count) {
+        foreach ($item in (Get-ChildItem -LiteralPath $pending.Pop() -Force)) {
+            Assert-AutoClipSecurePath $item.FullName
+            $relative = $item.FullName.Substring($prefix.Length).Replace('\', '/')
+            if ($item.PSIsContainer) { $items += 'D:' + $relative; $pending.Push($item.FullName) }
+            elseif ($relative -ne '.autoclip-ffmpeg-owner.json') { $items += 'F:' + $relative + ':' + $item.Length + ':' + (Get-FileHash -LiteralPath $item.FullName).Hash }
+        }
+    }
+    $items | Sort-Object
+}
+
+function Retain-AutoClipFfmpeg {
+    param($Context, [string]$ReleaseRoot)
+    if ($ReleaseRoot.Contains(';')) { throw 'FFmpeg release path cannot contain a PATH delimiter.' }
+    if (Compare-Object $Context.Inventory @(Get-AutoClipFfmpegInventory $Context.ExtractionRoot)) { throw 'Verified temporary FFmpeg tree changed before retention.' }
+    $managed = Join-Path $ReleaseRoot 'tools\ffmpeg'
+    Assert-AutoClipSecurePath $managed
+    $ownerPath = Join-Path $managed '.autoclip-ffmpeg-owner.json'
+    if (Test-Path -LiteralPath $managed) {
+        Assert-AutoClipSecurePath $ownerPath
+        if (-not (Test-Path -LiteralPath $ownerPath -PathType Leaf) -or
+            [Convert]::ToBase64String([IO.File]::ReadAllBytes($ownerPath)) -ne [Convert]::ToBase64String($Context.OwnerBytes) -or
+            (Compare-Object $Context.Inventory @(Get-AutoClipFfmpegInventory $managed))) {
+            throw 'Existing FFmpeg tree is foreign or differs; it will not be overwritten.'
+        }
+    } else {
+        $parent = Split-Path -Parent $managed
+        [IO.Directory]::CreateDirectory($parent) | Out-Null
+        $stage = Join-Path $parent ('.autoclip-ffmpeg-' + [guid]::NewGuid().ToString('N'))
+        Assert-AutoClipSecurePath $stage
+        [IO.Directory]::CreateDirectory($stage) | Out-Null
+        try {
+            Get-ChildItem -LiteralPath $Context.ExtractionRoot -Force | Copy-Item -Destination $stage -Recurse
+            if (Compare-Object $Context.Inventory @(Get-AutoClipFfmpegInventory $stage)) { throw 'Retained FFmpeg staging tree differs.' }
+            [IO.File]::WriteAllBytes((Join-Path $stage '.autoclip-ffmpeg-owner.json'), $Context.OwnerBytes)
+            Assert-AutoClipSecurePath $managed
+            [IO.Directory]::Move($stage, $managed)
+        } finally {
+            Assert-AutoClipSecurePath $stage
+            if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+        }
+    }
+    $receiptPath = Join-Path $ReleaseRoot '.inno-runtime-tools.json'
+    if (Test-Path -LiteralPath $receiptPath) {
+        Assert-AutoClipSecurePath $receiptPath
+        $bytes = [IO.File]::ReadAllBytes($receiptPath)
+        $saved = [Text.Encoding]::UTF8.GetString($bytes) | ConvertFrom-Json
+        if ($saved.schema_version -ne 1 -or $saved.status -cne 'configured' -or
+            ($saved.owner | ConvertTo-Json -Compress) -cne ($Context.Owner | ConvertTo-Json -Compress) -or
+            $saved.toolpath.release_root -ne [IO.Path]::GetFullPath($ReleaseRoot) -or
+            $saved.toolpath.managed_bin -ne (Join-Path $managed 'ffmpeg-9.0.1-essentials_build\bin')) {
+            throw 'Existing runtime tools receipt is foreign or conflicts with the pinned route.'
+        }
+        $Context.ExistingReceiptHash = (Get-FileHash -LiteralPath $receiptPath).Hash
+    }
+    $managed
+}
+
+function Register-AutoClipFfmpeg {
+    param($Context, [string]$ReleaseRoot)
+    $helperBytes = Read-AutoClipSecureInput $Context.RuntimeHelperPath $Context.RuntimeHelperSha256
+    $manifestBytes = Read-AutoClipSecureInput $Context.ManifestPath $Context.ManifestSha256
+    $snapshot = Join-Path $Context.StageRoot 'runtime-manifest.json'
+    Assert-AutoClipSecurePath $snapshot
+    [IO.File]::WriteAllBytes($snapshot, $manifestBytes)
+    $receipt = & ([scriptblock]::Create([Text.Encoding]::UTF8.GetString($helperBytes).TrimStart([char]0xFEFF))) -ReleaseRoot $ReleaseRoot -ManagedToolRoot (Join-Path $ReleaseRoot 'tools\ffmpeg') -ManifestPath $snapshot
+    $bytes = [Text.Encoding]::UTF8.GetBytes(([ordered]@{ schema_version = 1; status = 'configured'; owner = $Context.Owner; toolpath = $receipt } | ConvertTo-Json -Depth 8 -Compress))
+    $path = Join-Path $ReleaseRoot '.inno-runtime-tools.json'
+    Assert-AutoClipSecurePath $path
+    if (Test-Path -LiteralPath $path) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or [Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) -ne [Convert]::ToBase64String($bytes)) {
+            throw 'Refusing to overwrite foreign or conflicting runtime tools receipt.'
+        }
+    } else {
+        $temporary = Join-Path $ReleaseRoot ('.inno-runtime-tools-' + [guid]::NewGuid().ToString('N') + '.tmp')
+        Assert-AutoClipSecurePath $temporary
+        $stream = [IO.File]::Open($temporary, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+        try { $stream.Write($bytes, 0, $bytes.Length); $stream.Flush($true) } finally { $stream.Dispose() }
+        try { Assert-AutoClipSecurePath $path; [IO.File]::Move($temporary, $path) }
+        finally { if (Test-Path -LiteralPath $temporary) { [IO.File]::Delete($temporary) } }
+    }
+    $receipt
+}
+
 function Get-PinnedUpstreamAsset {
     param(
         [Parameter(Mandatory)][string]$Uri,
@@ -193,6 +839,7 @@ function Confirm-PrerequisiteTerms {
         [Parameter(Mandatory)][string]$ReceiptRoot,
         [switch]$Accepted,
         [switch]$NonInteractive,
+        [switch]$ShowOnly,
         [scriptblock]$PromptScript,
         [string]$TermsManifest
     )
@@ -215,13 +862,14 @@ function Confirm-PrerequisiteTerms {
     try { $hash = ([BitConverter]::ToString($digest.ComputeHash($bytes))).Replace('-','').ToLowerInvariant() } finally { $digest.Dispose() }
     if ($hash -ne $term.sha256) { throw "Prerequisite terms hash mismatch: $Id" }
     Write-Host "Review $($term.title) ($($term.version)): $($term.url)"
-    Write-Host 'By accepting, you confirm you have read these terms, can accept them for yourself or your entity, and have the rights required for this use.'
     # Keep the exact presented copy available even when the user declines.
     $directory = Join-Path $ReceiptRoot 'terms'
     New-Item -ItemType Directory -Path $directory -Force | Out-Null
     $copy = Join-Path $directory ($Id + '-' + $hash + '.' + $term.extension)
     [IO.File]::WriteAllBytes($copy, $bytes)
     Write-Host "Exact terms copy: $copy"
+    if ($ShowOnly) { return $copy }
+    Write-Host 'By accepting, you confirm you have read these terms, can accept them for yourself or your entity, and have the rights required for this use.'
     if (-not $Accepted) {
         if ($NonInteractive) { throw "Explicit prerequisite terms acceptance required: $Id. Review the displayed terms and rerun with the corresponding acceptance switch." }
         if (-not $PromptScript) { $PromptScript = { param($message) Read-Host $message } }
@@ -236,6 +884,17 @@ function Confirm-PrerequisiteTerms {
     }
     $path = Join-Path $directory ($Id + '-acceptance-' + [guid]::NewGuid().ToString('N') + '.json')
     $receipt | ConvertTo-Json | Set-Content -LiteralPath $path -Encoding UTF8
+}
+
+if ($ShowCublasTerms) {
+    if (-not $TermsRoot) { $TermsRoot = $env:TEMP }
+    $root = [IO.Path]::GetFullPath($TermsRoot)
+    $temp = [IO.Path]::GetFullPath($env:TEMP).TrimEnd('\') + '\'
+    if (-not $root.StartsWith($temp, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Terms display path must be under TEMP.'
+    }
+    Confirm-PrerequisiteTerms -Id cublas -ReceiptRoot $root -ShowOnly -NonInteractive | Out-Null
+    return
 }
 
 # CUDA build inputs for the pinned CTranslate2 4.8.2 Windows source build.
@@ -364,6 +1023,11 @@ if (-not $IsWindows -and $PSVersionTable.PSEdition -eq 'Core') {
 if (-not [Environment]::Is64BitOperatingSystem) {
     throw 'This release requires 64-bit Windows.'
 }
+Assert-AutoClipBuildCancellation
+if ($CancelPath -and $AppHealthHelperSha256 -notmatch '^[a-fA-F0-9]{64}$') { throw 'Managed source builds require a pinned app health helper.' }
+$secureDownload = Initialize-AutoClipSecureAcquisition -ManifestPath $SecureAcquisitionManifestPath -ManifestSha256 $SecureAcquisitionManifestSha256 -DownloaderSha256 $SecureDownloaderSha256 -NoPrerequisiteAcquisition:$NoPrerequisiteAcquisition
+$publisherCpu = Initialize-AutoClipPublisherCpu $CpuNativeArtifactPath $CpuNativeHelperSha256 $PythonPrerequisiteHelperSha256 ([bool]$InstallNvidiaGpu) ([bool]$NoPrerequisiteAcquisition)
+
     if (-not $InstallRoot) {
     $InstallRoot = Join-Path (Join-Path $env:LOCALAPPDATA 'AutoClip') $releaseId
 }
@@ -371,22 +1035,71 @@ $publisherCache = Join-Path (Join-Path $env:LOCALAPPDATA 'AutoClip') 'cache\arti
 if (-not $ExternalCache) {
     $ExternalCache = Join-Path (Join-Path $env:LOCALAPPDATA 'AutoClip') 'publisher-cache'
 }
+if ($secureDownload) {
+    foreach ($path in @($InstallRoot, $publisherCache, $ExternalCache, $NativeBuildRoot | Where-Object { $_ })) {
+        Assert-AutoClipSecurePath $path
+    }
+}
+$setupReceiptContext = $null
+$setupReceiptStartingProof = $null
+if ($SetupReceiptHelperSha256 -or $BootstrapIdentitySha256) {
+    foreach ($pin in @($SetupReceiptHelperSha256,$BootstrapIdentitySha256,$AppHealthHelperSha256,$SecureAcquisitionManifestSha256)) {
+        if ($pin -notmatch '^[a-fA-F0-9]{64}$') { throw 'Setup receipt requires paired bootstrap/helper and existing health/dependency pins.' }
+    }
+    $receiptHelper = Join-Path $PSScriptRoot 'write-setup-receipt.ps1'
+    if (-not (Test-Path -LiteralPath $receiptHelper)) { $receiptHelper = Join-Path $PSScriptRoot 'installer/write-setup-receipt.ps1' }
+    $receiptHelperBytes = Read-AutoClipSecureInput $receiptHelper $SetupReceiptHelperSha256
+    . ([scriptblock]::Create([Text.Encoding]::UTF8.GetString($receiptHelperBytes).TrimStart([char]0xFEFF)))
+    $setupReceiptContext = @{
+        install_root = [IO.Path]::GetFullPath($InstallRoot); release_id = $releaseId
+        profile = $(if ($InstallNvidiaGpu) { 'nvidia' } else { 'cpu' })
+        archive_sha256 = $expectedArchiveSha256; release_manifest_sha256 = $expectedManifestSha256
+        dependency_manifest_sha256 = $SecureAcquisitionManifestSha256.ToLowerInvariant()
+        bootstrap_sha256 = $BootstrapIdentitySha256.ToLowerInvariant()
+        source_helper_sha256 = $SetupReceiptHelperSha256.ToLowerInvariant()
+        health_helper_sha256 = $AppHealthHelperSha256.ToLowerInvariant()
+    }
+}
 $resumeIncomplete = $false
+$retainedLauncherPin = $null
 if (Test-Path -LiteralPath $InstallRoot) {
     if (-not $PrerequisitesOnly) {
         $existingManifest = Join-Path $InstallRoot 'release-manifest.json'
         $existingVenv = Join-Path $InstallRoot '.venv'
         if (Test-Path -LiteralPath (Join-Path $InstallRoot '.install-complete')) {
-            throw "Install path already exists: $InstallRoot. Choose another -InstallRoot to preserve existing data."
+            if (-not $setupReceiptContext) { throw "Install path already exists: $InstallRoot. Choose another -InstallRoot to preserve existing data." }
+            $completedProof = Assert-SetupStartingProvenance -Context $setupReceiptContext -ManifestPath $existingManifest
+            if (-not $completedProof.previous_sha256) { throw 'Completed source requires an existing verified ownership handoff.' }
+            $freshHealth = Invoke-AutoClipAppHealth -PreserveSourceReceipt
+            if (-not (Test-Path -LiteralPath (Join-Path $InstallRoot '.install-complete') -PathType Leaf)) { throw 'Completed source marker is missing; state preserved.' }
+            $recheckedProof = Assert-SetupStartingProvenance -Context $setupReceiptContext -ManifestPath $existingManifest
+            if ($recheckedProof.previous_sha256 -cne $completedProof.previous_sha256) { throw 'Completed source ownership changed during health; state preserved.' }
+            Invoke-AutoClipBuildCommit {
+                if (-not (Test-Path -LiteralPath (Join-Path $InstallRoot '.install-complete') -PathType Leaf)) { throw 'Completed source marker is missing; state preserved.' }
+                $commitProof = Assert-SetupStartingProvenance -Context $setupReceiptContext -ManifestPath $existingManifest
+                if ($commitProof.previous_sha256 -cne $completedProof.previous_sha256) { throw 'Completed source ownership changed before commit; state preserved.' }
+            }
+            Write-Host 'Verified completed source reused; source outputs preserved.'
+            return
         }
-        if ((Test-Path -LiteralPath $existingManifest -PathType Leaf) -and
+        if ($setupReceiptContext -and (Test-Path -LiteralPath $InstallRoot -PathType Container) -and
+            @(Get-ChildItem -LiteralPath $InstallRoot -Force).Count -eq 0) {
+            Assert-SetupReceiptPath $InstallRoot -Protected | Out-Null
+        } elseif ((Test-Path -LiteralPath $existingManifest -PathType Leaf) -and
             (Get-FileHash -LiteralPath $existingManifest -Algorithm SHA256).Hash.ToLowerInvariant() -eq $expectedManifestSha256) {
             $resumeIncomplete = $true
+            if ($setupReceiptContext) { $setupReceiptStartingProof = Assert-SetupStartingProvenance -Context $setupReceiptContext -ManifestPath $existingManifest }
         } else {
             throw "Install path already exists: $InstallRoot. Choose another -InstallRoot to preserve existing data."
         }
     }
 }
+
+$ffmpegContext = $null
+$ffmpegProcessPath = $env:Path
+try {
+    $ffmpegContext = Initialize-AutoClipFfmpeg -ArchivePath $FfmpegArchivePath -ArchiveHelperSha256 $ToolArchiveHelperSha256 -RuntimeHelperSha256 $RuntimeToolPathHelperSha256 -SecureRoute:([bool]$secureDownload)
+    if ($ffmpegContext) { $env:Path = $ffmpegContext.Bin + ';' + $env:Path }
 
 # Helper embedded in standalone installer.
 function Update-ProcessPath {
@@ -395,11 +1108,123 @@ function Update-ProcessPath {
     $env:Path = @($env:Path, $machine, $user, (Join-Path $env:USERPROFILE '.local\bin')) -join ';'
 }
 Update-ProcessPath
+function Add-VerifiedTool([string]$Path, [string]$Name, [string]$Signer, [string]$VersionPattern) {
+    $exe = [IO.Path]::GetFullPath($Path)
+    if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Selected $Name executable is missing." }
+    $signature = Get-AuthenticodeSignature -LiteralPath $exe
+    if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch [regex]::Escape($Signer)) {
+        throw "Selected $Name executable signature or publisher differs."
+    }
+    $version = & $exe --version | Out-String
+    if ($LASTEXITCODE -ne 0 -or $version.Trim() -notmatch $VersionPattern) {
+        throw "Selected $Name executable version differs."
+    }
+    $env:Path = "$(Split-Path -Parent $exe);$env:Path"
+}
+if ($GitExePath -and -not $publisherCpu) { Add-VerifiedTool $GitExePath 'Git' 'Johannes Schindelin' '^git version 2\.55\.0\.windows\.3$' }
+if ($UvExePath) { Add-VerifiedTool $UvExePath 'uv' 'OpenAI OpCo, LLC' '^uv 0\.12\.19\b' }
+
+function Get-AutoClipSetupDirectoryAcl {
+    $acl = [Security.AccessControl.DirectorySecurity]::new()
+    $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User
+    $acl.SetOwner($sid); $acl.SetAccessRuleProtection($true,$false)
+    foreach ($identity in @($sid.Value,'S-1-5-18','S-1-5-32-544')) {
+        $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new($identity),'FullControl','ContainerInherit,ObjectInherit','None','Allow'))
+    }
+    $acl
+}
+function Initialize-AutoClipFreshSetupProvenance([hashtable]$Context,[string]$SourceArchive) {
+    # Stage only the pinned manifest; establish provenance before touching the release.
+    if ($CancelPath) {
+        $stage = Split-Path -Parent $CancelPath
+        Assert-SetupReceiptPath $stage -Protected | Out-Null
+    } else {
+        $stage = Join-Path ([IO.Path]::GetTempPath()) ('autoclip-setup-manifest-' + [guid]::NewGuid().ToString('N'))
+        [IO.Directory]::CreateDirectory($stage,(Get-AutoClipSetupDirectoryAcl)) | Out-Null
+    }
+    $snapshot = Join-Path $stage 'source-release-manifest.json'
+    Assert-SetupReceiptPath $snapshot | Out-Null
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [IO.Compression.ZipFile]::OpenRead($SourceArchive)
+    try {
+        $entries = @($archive.Entries | Where-Object { $_.FullName -ceq 'release-manifest.json' })
+        if ($entries.Count -ne 1 -or $entries[0].Length -gt 16777216) { throw 'Exact bounded archive manifest required before setup extraction.' }
+        $inputStream = $entries[0].Open()
+        try {
+            $outputStream = [IO.File]::Open($snapshot,'CreateNew','Write','None')
+            try { $inputStream.CopyTo($outputStream) } finally { $outputStream.Dispose() }
+        } finally { $inputStream.Dispose() }
+    } finally { $archive.Dispose() }
+    Assert-SetupStartingProvenance -Context $Context -ManifestPath $snapshot
+}
+function Get-AutoClipLauncherPin([string]$Root) {
+    $rootFull = [IO.Path]::GetFullPath($Root)
+    $path = Join-Path $rootFull 'AutoClip.lnk'
+    Assert-AutoClipMsysProtectedPath $path
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw 'Owned launcher is not a regular file.' }
+    $stream = [IO.File]::Open($path, 'Open', 'Read', 'Read')
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        if ($stream.Length -le 0) { throw 'Owned launcher is empty.' }
+        $hash = [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '').ToLowerInvariant()
+        $shell = New-Object -ComObject WScript.Shell
+        $link = $shell.CreateShortcut($path)
+        if ($link.TargetPath -ne (Join-Path $rootFull '.venv\Scripts\pythonw.exe') -or
+            $link.Arguments -cne '-m autoclip.desktop' -or $link.WorkingDirectory -ne $rootFull -or
+            $link.Description -cne 'Start AutoClip') { throw 'Owned launcher target or arguments changed.' }
+        [pscustomobject]@{path='AutoClip.lnk';bytes=$stream.Length;sha256=$hash;target=$link.TargetPath;arguments=$link.Arguments;working_directory=$link.WorkingDirectory;description=$link.Description;archive_sha256=$expectedArchiveSha256;release_manifest_sha256=$expectedManifestSha256}
+    } finally { $sha.Dispose(); $stream.Dispose() }
+}
+
+function Test-AutoClipOwnedLauncher([string]$Root) {
+    $receiptPath = Join-Path $Root 'native-build-receipt.json'
+    Assert-AutoClipMsysProtectedPath $receiptPath
+    if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) { return $false }
+    $stream = [IO.File]::Open($receiptPath, 'Open', 'Read', 'Read')
+    try {
+        $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::UTF8, $true, 1024, $true)
+        try { $pin = ($reader.ReadToEnd() | ConvertFrom-Json).setup_owned_launcher } finally { $reader.Dispose() }
+    } finally { $stream.Dispose() }
+    if (-not $pin -or $pin.path -cne 'AutoClip.lnk' -or [string]$pin.sha256 -notmatch '^[a-f0-9]{64}$' -or
+        $pin.archive_sha256 -ne $expectedArchiveSha256 -or $pin.release_manifest_sha256 -ne $expectedManifestSha256) { return $false }
+    $path = Join-Path $Root 'AutoClip.lnk'
+    Assert-AutoClipMsysProtectedPath $path
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item -LiteralPath $path).Length -ne $pin.bytes -or
+        (Get-FileHash -LiteralPath $path).Hash -ne $pin.sha256) { return $false }
+    $actual = Get-AutoClipLauncherPin $Root
+    foreach ($name in $actual.PSObject.Properties.Name) { if ($pin.$name -cne $actual.$name) { return $false } }
+    return @($pin.PSObject.Properties.Name | Where-Object { $_ -notin $actual.PSObject.Properties.Name }).Count -eq 0
+}
+
+function Write-AutoClipCompletionFile([string]$Path, [byte[]]$Bytes, [switch]$ReplaceExisting) {
+    Assert-AutoClipSecurePath $Path
+    if ([IO.Path]::GetFileName($Path) -notin @('.install-complete','native-build-receipt.json')) { throw 'Unsupported completion output.' }
+    $parent = Split-Path -Parent (Split-Path -Parent $Path)
+    Assert-AutoClipMsysProtectedPath $parent
+    if (Test-Path -LiteralPath $Path) { Assert-AutoClipMsysProtectedPath $Path; if (-not $ReplaceExisting) { throw 'Completion output already exists; preserved.' } }
+    $temporary = Join-Path $parent ('.autoclip-completion-' + [guid]::NewGuid().ToString('N') + '.tmp')
+    Assert-AutoClipSecurePath $temporary
+    $hash = [Security.Cryptography.SHA256]::Create()
+    try { $pin = [BitConverter]::ToString($hash.ComputeHash($Bytes)).Replace('-','') } finally { $hash.Dispose() }
+    try {
+        $file = [IO.File]::Open($temporary,'CreateNew','Write','None')
+        try { $file.Write($Bytes,0,$Bytes.Length); $file.Flush($true) } finally { $file.Dispose() }
+        Assert-AutoClipSecurePath $Path
+        if ($ReplaceExisting -and [IO.File]::Exists($Path)) { [IO.File]::Replace($temporary,$Path,[NullString]::Value) }
+        else { [IO.File]::Move($temporary,$Path) }
+    } finally {
+        if (Test-Path -LiteralPath $temporary) {
+            Assert-AutoClipSecurePath $temporary
+            if ((Get-FileHash -LiteralPath $temporary).Hash -eq $pin) { [IO.File]::Delete($temporary) }
+        }
+    }
+}
 
 function Install-AutoClipLaunchers {
     param(
         [Parameter(Mandatory)][string]$InstallRoot,
-        [string]$DesktopDirectory = [Environment]::GetFolderPath('DesktopDirectory')
+        [string]$DesktopDirectory = [Environment]::GetFolderPath('DesktopDirectory'),
+        [switch]$SkipDesktopShortcut
     )
     $root = [IO.Path]::GetFullPath($InstallRoot)
     $pythonw = Join-Path $root '.venv\Scripts\pythonw.exe'
@@ -411,14 +1236,30 @@ function Install-AutoClipLaunchers {
 
     $folderLink = Join-Path $root 'AutoClip.lnk'
     $shell = New-Object -ComObject WScript.Shell
-    $link = $shell.CreateShortcut($folderLink)
+    $temporary = Join-Path (Split-Path -Parent $root) ('.autoclip-launcher-' + [guid]::NewGuid().ToString('N') + '.lnk')
+    Assert-AutoClipSecurePath $temporary
+    Assert-AutoClipSecurePath $folderLink
+    $link = $shell.CreateShortcut($temporary)
     $link.TargetPath = $pythonw
     $link.Arguments = '-m autoclip.desktop'
     $link.WorkingDirectory = $root
     $link.Description = 'Start AutoClip'
-    $link.Save()
+    $temporaryHash = $null
+    try {
+        $link.Save()
+        $temporaryHash = (Get-FileHash -LiteralPath $temporary).Hash
+        Assert-AutoClipSecurePath $folderLink
+        if ([IO.File]::Exists($folderLink)) { [IO.File]::Replace($temporary,$folderLink,[NullString]::Value) }
+        else { [IO.File]::Move($temporary,$folderLink) }
+    } finally {
+        if (Test-Path -LiteralPath $temporary) {
+            Assert-AutoClipSecurePath $temporary
+            if ($temporaryHash -and (Get-FileHash -LiteralPath $temporary).Hash -eq $temporaryHash) { [IO.File]::Delete($temporary) }
+        }
+    }
     Write-Host "Install-folder launcher: $folderLink"
 
+    if ($SkipDesktopShortcut) { return }
     if (-not $DesktopDirectory -or -not (Test-Path -LiteralPath $DesktopDirectory -PathType Container)) {
         Write-Warning 'Windows Desktop folder is unavailable; the install-folder launcher is ready.'
         return
@@ -437,10 +1278,11 @@ function Install-AutoClipLaunchers {
 }
 
 function Install-WingetPackage([string]$Package, [string]$Version, [string]$Override = '') {
+    if ($NoPrerequisiteAcquisition) { throw "Missing prerequisite: $Package $Version. Install it through a reviewed route before retrying." }
     if ($Package -eq 'Microsoft.VisualStudio.2022.BuildTools') {
         Confirm-PrerequisiteTerms -Id build-tools -ReceiptRoot $publisherCache -Accepted:$AcceptMicrosoftTerms -NonInteractive:$NonInteractive
         # Let Microsoft's installer present and collect its own exact agreement.
-        $Override = '--wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.Windows10SDK.20348'
+        $Override = '--wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.Windows11SDK.26100'
     }
     $winget = Get-Command winget -ErrorAction SilentlyContinue
     if (-not $winget) { throw "Windows Package Manager is required to provision $Package." }
@@ -465,9 +1307,12 @@ function Require-Tool([string]$Name, [string]$Package, [string]$Version) {
 }
 
 $uv = Require-Tool 'uv' 'astral-sh.uv' '0.12.19'
+if ($ffmpegContext) { $env:Path = $ffmpegContext.Bin + ';' + $env:Path }
 $ffmpeg = Require-Tool 'ffmpeg' 'Gyan.FFmpeg' '9.0.1'
 $ffprobe = Get-Command ffprobe -ErrorAction SilentlyContinue
 if (-not $ffprobe) { throw 'FFmpeg was found, but ffprobe is missing. Install the complete Gyan.FFmpeg package.' }
+if ($ffmpegContext -and ($ffmpeg.Source -ne (Join-Path $ffmpegContext.Bin 'ffmpeg.exe') -or
+    $ffprobe.Source -ne (Join-Path $ffmpegContext.Bin 'ffprobe.exe'))) { throw 'FFmpeg prerequisite selection differs from verified staging.' }
 $filters = & $ffmpeg.Source -hide_banner -filters 2>&1 | Out-String
 if ($LASTEXITCODE -ne 0 -or $filters -notmatch '(?m)^\s*\.\.\s+ass\s') {
     throw 'FFmpeg needs the ass subtitle filter (libass). Install a full FFmpeg build.'
@@ -480,6 +1325,7 @@ if ($InstallOllama) {
     $ollama = Require-Tool 'ollama' 'Ollama.Ollama' '0.34.4'
     Write-Host 'Ollama installed. Pull a model of your choice with: ollama pull <model>'
 }
+$nativePrerequisiteAction = {
 if (-not $MsysBash) { $MsysBash = 'C:\msys64\usr\bin\bash.exe' }
 if (-not (Test-Path -LiteralPath $MsysBash -PathType Leaf)) {
     if ($MsysBash -ne 'C:\msys64\usr\bin\bash.exe') { throw "Custom MSYS2 bash path is missing: $MsysBash" }
@@ -488,29 +1334,38 @@ if (-not (Test-Path -LiteralPath $MsysBash -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $MsysBash -PathType Leaf)) { throw 'MSYS2 installation did not provide bash.exe.' }
 $msysRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $MsysBash))
 $msysUcrt = Join-Path $msysRoot 'ucrt64\bin'
-$env:MSYSTEM = 'UCRT64'
-$env:MSYS2_PATH_TYPE = 'inherit'
-$env:Path = "$msysUcrt;$(Split-Path -Parent $MsysBash);$env:Path"
+$msysPrerequisiteAction = {
 $requiredMsysPackages = @('make', 'diffutils', 'pkgconf', 'mingw-w64-ucrt-x86_64-nasm')
+$msysProbeArguments = @(if ($NoPrerequisiteAcquisition) { '--noprofile'; '--norc'; '-c' } else { '-lc' })
 $missingMsysPackages = @($requiredMsysPackages | Where-Object {
-    & $MsysBash -lc "pacman -Q $_ >/dev/null 2>&1"
+    & $MsysBash @msysProbeArguments "pacman -Q $_ >/dev/null 2>&1"
     $LASTEXITCODE -ne 0
 })
 if ($missingMsysPackages.Count) {
+    if ($NoPrerequisiteAcquisition) { throw "Missing MSYS2 packages: $($missingMsysPackages -join ', '). Install them through a reviewed route before retrying." }
     & $MsysBash -lc 'pacman -Syu --noconfirm'
     if ($LASTEXITCODE -ne 0) { throw 'MSYS2 base package update failed.' }
     & $MsysBash -lc ('pacman -S --noconfirm --needed ' + ($requiredMsysPackages -join ' '))
     if ($LASTEXITCODE -ne 0) { throw 'Required MSYS2 build package installation failed.' }
 }
 foreach ($package in $requiredMsysPackages) {
-    & $MsysBash -lc "pacman -Q $package >/dev/null 2>&1"
+    & $MsysBash @msysProbeArguments "pacman -Q $package >/dev/null 2>&1"
     if ($LASTEXITCODE -ne 0) { throw "MSYS2 build package is missing: $package" }
 }
 foreach ($probe in @('make --version', 'diff --version', 'pkg-config --version', 'nasm -v')) {
-    & $MsysBash -lc $probe | Out-Null
+    & $MsysBash @msysProbeArguments $probe | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "MSYS2 build tool check failed: $probe" }
 }
 if (-not (Test-Path -LiteralPath (Join-Path $msysUcrt 'nasm.exe'))) { throw 'MSYS2 UCRT64 NASM executable is missing.' }
+}
+if ($NoPrerequisiteAcquisition -and $SecureAcquisitionManifestPath) {
+    Invoke-AutoClipMsysSource $msysPrerequisiteAction @($GitExePath, $UvExePath)
+} else {
+$env:MSYSTEM = 'UCRT64'
+$env:MSYS2_PATH_TYPE = 'inherit'
+$env:Path = "$msysUcrt;$(Split-Path -Parent $MsysBash);$env:Path"
+    & $msysPrerequisiteAction
+}
 $git = Get-Command git.exe -ErrorAction SilentlyContinue
 if (-not $git) {
     Install-WingetPackage 'Git.Git' '2.55.0.3'
@@ -524,7 +1379,7 @@ if ($LASTEXITCODE -ne 0 -or $gitVersion -notmatch 'git version 2\.(4[5-9]|5[0-9]
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 $vsRoot = if (Test-Path -LiteralPath $vswhere) { & $vswhere -latest -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1 }
 if (-not $vsRoot) {
-    Install-WingetPackage 'Microsoft.VisualStudio.2022.BuildTools' '17.14.41' '--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.Windows10SDK.20348'
+    Install-WingetPackage 'Microsoft.VisualStudio.2022.BuildTools' '17.14.41' '--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.Windows11SDK.26100'
     if (-not (Test-Path -LiteralPath $vswhere)) { throw 'Visual Studio installer did not provide vswhere.exe.' }
     $vsRoot = & $vswhere -latest -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1
 }
@@ -536,14 +1391,23 @@ if ($LASTEXITCODE -ne 0) { throw 'Visual Studio x64 compiler validation failed.'
 $sdkIncludeRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Include'
 $sdkHeaders = @(Get-ChildItem -LiteralPath $sdkIncludeRoot -Directory -ErrorAction SilentlyContinue | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'um\Windows.h') -PathType Leaf })
 if (-not $sdkHeaders.Count) { throw 'Windows SDK headers are unavailable after provisioning.' }
+}
+if (-not $publisherCpu) { . $nativePrerequisiteAction }
 if ($InstallNvidiaGpu) {
+    if ($NoPrerequisiteAcquisition -and -not $AllowPinnedNvidiaAcquisition) {
+        throw 'NVIDIA prerequisite acquisition is not yet qualified for the guarded installer.'
+    }
     # Helper embedded in standalone installer.
-    $CudaRoot = Ensure-CudaPrerequisites -CudaRoot $CudaRoot -CacheRoot $publisherCache -AcceptNvidiaTerms:$AcceptNvidiaTerms -NonInteractive:$NonInteractive
+    $CudaRoot = Ensure-CudaPrerequisites -CudaRoot $CudaRoot -CacheRoot $publisherCache -AcceptNvidiaTerms:$AcceptNvidiaTerms -NonInteractive:$NonInteractive -DownloadScript $secureDownload
 }
 if ($PrerequisitesOnly) { Write-Host 'Prerequisites are ready.'; return }
 
 $downloaded = $false
+$savedDownloadDefaults = $PSDefaultParameterValues
 try {
+    if ($secureDownload) {
+        $PSDefaultParameterValues = Get-AutoClipSecureDownloadDefaults -Existing $PSDefaultParameterValues -DownloadScript $secureDownload
+    }
     if (-not $ArchivePath) {
         if (-not $releaseUrl) {
             throw 'This source-build candidate is not published. Supply its exact local -ArchivePath; the active installer pin is unchanged.'
@@ -551,7 +1415,12 @@ try {
         $ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "autoclip-v11-20260926-notice-correction-$PID.zip"
         $downloaded = $true
         try {
-            Invoke-WebRequest -Uri $releaseUrl -OutFile $ArchivePath
+            if ($secureDownload) {
+                $outer = [Text.Encoding]::UTF8.GetString((Read-AutoClipSecureInput $SecureAcquisitionManifestPath $SecureAcquisitionManifestSha256)).TrimStart([char]0xFEFF) | ConvertFrom-Json
+                Get-PinnedUpstreamAsset -Uri $releaseUrl -Sha256 $expectedArchiveSha256 -Size ([long]$outer.target_release.bytes) -Destination $ArchivePath -DownloadScript $secureDownload | Out-Null
+            } else {
+                Invoke-WebRequest -Uri $releaseUrl -OutFile $ArchivePath
+            }
         } catch {
             $status = $null
             if ($_.Exception.Response) { $status = [int]$_.Exception.Response.StatusCode }
@@ -570,7 +1439,12 @@ try {
         throw "Release archive SHA-256 mismatch: $actualArchiveSha256"
     }
 
-    New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
+    if ($setupReceiptContext) {
+        if (-not $setupReceiptStartingProof) { $setupReceiptStartingProof = Initialize-AutoClipFreshSetupProvenance $setupReceiptContext $ArchivePath }
+        if (-not (Test-Path -LiteralPath $InstallRoot)) { [IO.Directory]::CreateDirectory($InstallRoot,(Get-AutoClipSetupDirectoryAcl)) | Out-Null }
+    } else {
+        New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
+    }
     Expand-Archive -LiteralPath $ArchivePath -DestinationPath $InstallRoot -Force
     $manifestPath = Join-Path $InstallRoot 'release-manifest.json'
     if ((Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedManifestSha256) {
@@ -583,6 +1457,7 @@ try {
         -not $manifest.native_build -or @($manifest.native_build.wheel_names).Count -ne 2) {
         throw 'Unsupported or incomplete source-build manifest.'
     }
+    Assert-AutoClipPublisherCpuRelease $publisherCpu $manifest ([bool]$InstallNvidiaGpu)
     $expectedFiles = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
     [void]$expectedFiles.Add('release-manifest.json')
     $rootFull = [IO.Path]::GetFullPath($InstallRoot).TrimEnd('\') + '\'
@@ -602,9 +1477,21 @@ try {
             throw "Release file SHA-256 mismatch: $relative"
         }
     }
+    if ($ffmpegContext) {
+        $managedFfmpeg = Retain-AutoClipFfmpeg -Context $ffmpegContext -ReleaseRoot $InstallRoot
+        $env:Path = (Join-Path $managedFfmpeg 'ffmpeg-9.0.1-essentials_build\bin') + ';' + $env:Path
+    }
     if ($resumeIncomplete) {
         foreach ($file in (Get-ChildItem -LiteralPath $InstallRoot -File -Recurse -Force)) {
             $relative = $file.FullName.Substring($rootFull.Length).Replace('\', '/')
+            if ($relative -eq '.setup-source-ownership.json' -and $setupReceiptStartingProof) { continue }
+            if ($relative -eq 'AutoClip.lnk' -and (Test-AutoClipOwnedLauncher $InstallRoot)) {
+                $retainedLauncherPin = (Get-Content -LiteralPath (Join-Path $InstallRoot 'native-build-receipt.json') -Raw | ConvertFrom-Json).setup_owned_launcher
+                continue
+            }
+            if ($ffmpegContext -and ($relative.StartsWith('tools/ffmpeg/', [StringComparison]::OrdinalIgnoreCase) -or
+                ($relative -eq '.inno-runtime-tools.json' -and $ffmpegContext.ExistingReceiptHash -and
+                (Get-FileHash -LiteralPath $file.FullName).Hash -eq $ffmpegContext.ExistingReceiptHash))) { continue }
             if (-not $expectedFiles.Contains($relative) -and
                 -not $relative.StartsWith('.venv/', [StringComparison]::OrdinalIgnoreCase) -and
                 -not $relative.StartsWith('publisher-wheels/', [StringComparison]::OrdinalIgnoreCase) -and
@@ -615,13 +1502,18 @@ try {
     }
 
     . (Join-Path $InstallRoot 'upstream-assets.ps1')
+    if ($secureDownload) { $script:SecurePublisherManifestPath = Join-Path $InstallRoot 'publisher-wheel-manifest.json' }
     $wheelProfile = if ($InstallNvidiaGpu) { 'nvidia' } else { 'cpu' }
     $externalWheels = Join-Path $InstallRoot "publisher-wheels\$wheelProfile"
-    & (Join-Path $InstallRoot 'Prepare-AutoClipOfflineCache.ps1') -ManifestPath $manifestPath -CacheRoot $publisherCache -StageWheelhouse $externalWheels -Offline:$OfflinePublisherCache -InstallNvidiaGpu:$InstallNvidiaGpu -AcceptNvidiaTerms:$AcceptNvidiaTerms -NonInteractive:$NonInteractive
+    $cublasTermsAccepted = if ($NoPrerequisiteAcquisition) { $AcceptCublasTerms } else { $AcceptNvidiaTerms }
+    & (Join-Path $InstallRoot 'Prepare-AutoClipOfflineCache.ps1') -ManifestPath $manifestPath -CacheRoot $publisherCache -StageWheelhouse $externalWheels -Offline:$OfflinePublisherCache -InstallNvidiaGpu:$InstallNvidiaGpu -AcceptNvidiaTerms:$cublasTermsAccepted -NonInteractive:$NonInteractive -DownloadScript $secureDownload
     if (-not $?) { throw 'Publisher wheel acquisition failed.' }
     $microsoft = $null
     $openblasArchive = $null
     $openblasAsset = $null
+    $publisherVc = $null
+    $vcStateDirectory = Join-Path $ExternalCache 'vc-runtime'
+    if ($publisherCpu) { $publisherVc = Invoke-AutoClipPublisherVc -StateDirectory $vcStateDirectory -CheckOnly }
     foreach ($asset in $manifest.external_assets) {
         if ($asset.kind -eq 'python_wheel' -and -not $InstallNvidiaGpu) { continue }
         if ([string]$asset.filename -notmatch '^[A-Za-z0-9][A-Za-z0-9._+-]*$') {
@@ -637,11 +1529,14 @@ try {
             throw "Unsupported publisher asset kind: $($asset.kind)"
         }
         if ($asset.kind -eq 'microsoft_vc_redist_x64') {
+            if ($publisherCpu -and $publisherVc.status -ceq 'ready') { continue }
+            if (-not $publisherCpu) {
             $installedOpenMp = Join-Path $env:WINDIR 'System32\vcomp140.dll'
             if ((Test-Path -LiteralPath $installedOpenMp -PathType Leaf) -and
                 ([version](Get-Item -LiteralPath $installedOpenMp).VersionInfo.FileVersion) -ge [version]'14.44.35211.0') {
                 Write-Host 'Compatible Microsoft OpenMP runtime is already installed.'
                 continue
+            }
             }
             $microsoft = $destination
             Confirm-PrerequisiteTerms -Id vc-runtime -ReceiptRoot $publisherCache -Accepted:$AcceptMicrosoftTerms -NonInteractive:$NonInteractive
@@ -650,27 +1545,52 @@ try {
             $openblasArchive = $destination
             $openblasAsset = $asset
         }
-        Get-PinnedUpstreamAsset -Uri ([string]$asset.url) -Sha256 ([string]$asset.sha256) -Size ([long]$asset.bytes) -Destination $destination | Out-Null
+        Get-PinnedUpstreamAsset -Uri ([string]$asset.url) -Sha256 ([string]$asset.sha256) -Size ([long]$asset.bytes) -Destination $destination -DownloadScript $secureDownload | Out-Null
     }
     if ($microsoft) {
+        if ($publisherCpu) { $publisherVc = Invoke-AutoClipPublisherVc -StateDirectory $vcStateDirectory -InstallerPath $microsoft }
+        else {
         $process = Start-Process -FilePath $microsoft -ArgumentList '/install','/norestart' -Wait -PassThru -Verb RunAs -WindowStyle Normal
-        if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
+        if ($process.ExitCode -eq 3010) {
+            throw 'Microsoft Visual C++ Redistributable installed but Windows requires a reboot. Reboot, then rerun the same AutoClip installer.'
+        }
+        if ($process.ExitCode -ne 0) {
             throw "Microsoft Visual C++ Redistributable installation failed: $($process.ExitCode)"
         }
+        }
     }
+    if (-not $publisherCpu) {
     $installedOpenMp = Join-Path $env:WINDIR 'System32\vcomp140.dll'
     if (-not (Test-Path -LiteralPath $installedOpenMp -PathType Leaf) -or
         ([version](Get-Item -LiteralPath $installedOpenMp).VersionInfo.FileVersion) -lt [version]'14.44.35211.0') {
         throw 'Microsoft OpenMP runtime is missing or too old after the Microsoft installer.'
     }
+    }
 
     $venv = Join-Path $InstallRoot '.venv'
     $venvOptions = @()
     if ($resumeIncomplete -and (Test-Path -LiteralPath $venv)) {
-        $venvOptions += '--clear'
+        $venvOptions += @('--clear', '--force')
     }
-    & $uv.Source venv @venvOptions --python 3.11 $venv
+    $pythonDownloadOption = @(if ($NoPrerequisiteAcquisition) { '--no-python-downloads' })
+    if ($publisherCpu) {
+        $pythonHelper = Join-Path $PSScriptRoot 'install-python.ps1'
+        if (-not (Test-Path -LiteralPath $pythonHelper -PathType Leaf)) { $pythonHelper = Join-Path $PSScriptRoot 'installer/install-python.ps1' }
+        $nativePowerShell = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::Windows)) 'System32/WindowsPowerShell/v1.0/powershell.exe'
+        if ([Environment]::Is64BitOperatingSystem -and -not [Environment]::Is64BitProcess) { throw 'Publisher CPU requires native x64 PowerShell.' }
+        $verifiedPython = @(Invoke-AutoClipPinnedHelper $pythonHelper $PythonPrerequisiteHelperSha256 {
+            param($pinnedPath)
+            & $nativePowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $pinnedPath -CheckOnly
+            if ($LASTEXITCODE -ne 0) { throw 'Exact registered python.org 3.11.9 x64 is unavailable.' }
+        })
+        if ($verifiedPython.Count -ne 1) { throw 'Python prerequisite returned an ambiguous interpreter.' }
+        Assert-AutoClipSecurePath ([string]$verifiedPython[0])
+        & $uv.Source venv @venvOptions --python ([string]$verifiedPython[0]) --no-managed-python --no-python-downloads $venv
+    } else {
+        & $uv.Source venv @venvOptions --python 3.11.9 @pythonDownloadOption $venv
+    }
     if ($LASTEXITCODE -ne 0) {
+        if ($NoPrerequisiteAcquisition) { throw 'Python 3.11 is unavailable without prerequisite acquisition.' }
         $winget = Get-Command winget -ErrorAction SilentlyContinue
         if (-not $winget) {
             throw 'Python 3.11 was unavailable to uv, and winget is missing. Install Python 3.11 from python.org, then retry.'
@@ -679,43 +1599,87 @@ try {
         & $winget.Source install --exact --id Python.Python.3.11 --version 3.11.9 --architecture x64 --source winget --accept-source-agreements --accept-package-agreements
         if ($LASTEXITCODE -ne 0) { throw 'Python 3.11 installation with winget failed.' }
         Update-ProcessPath
-        & $uv.Source venv @venvOptions --python 3.11 --no-managed-python --no-python-downloads $venv
+        & $uv.Source venv @venvOptions --python 3.11.9 --no-managed-python --no-python-downloads $venv
         if ($LASTEXITCODE -ne 0) { throw 'Python 3.11 is still unavailable after winget installation. Open a new PowerShell window and retry.' }
     }
     $python = Join-Path $venv 'Scripts\python.exe'
+    if ($ffmpegContext) { $ffmpegRuntimeReceipt = Register-AutoClipFfmpeg -Context $ffmpegContext -ReleaseRoot $InstallRoot }
     $wheelhouse = Join-Path $InstallRoot 'wheelhouse'
+    if ($publisherCpu) {
+        $nativeHelper = Join-Path $PSScriptRoot 'install-cpu-native-artifact.py'
+        if (-not (Test-Path -LiteralPath $nativeHelper -PathType Leaf)) { $nativeHelper = Join-Path $PSScriptRoot 'installer/install-cpu-native-artifact.py' }
+        $nativeOutput = Join-Path $externalWheels 'native-artifact'
+        $nativeWheelStage = $externalWheels + '-native'
+        Invoke-AutoClipPinnedHelper $nativeHelper $CpuNativeHelperSha256 {
+            param($pinnedPath)
+            & $python $pinnedPath --archive $CpuNativeArtifactPath --archive-sha256 $publisherCpu.sha256 --archive-bytes $publisherCpu.bytes --runtime-id $publisherCpu.identity --wheelhouse $nativeWheelStage --source-output $nativeOutput
+            if ($LASTEXITCODE -ne 0) { throw 'Publisher CPU artifact verification/staging failed; no source build fallback.' }
+        }
+        $producerReceiptPath = Join-Path $nativeOutput 'build/native-build-receipt.json'
+        $producerBytes = [IO.File]::ReadAllBytes($producerReceiptPath)
+        $nativeReceipt = [Text.Encoding]::UTF8.GetString($producerBytes).TrimStart([char]0xFEFF) | ConvertFrom-Json
+        if ($nativeReceipt.profile -cne 'cpu' -or $nativeReceipt.install_nvidia_gpu -ne $false) { throw 'Publisher CPU producer receipt profile differs.' }
+        foreach ($wheel in $nativeReceipt.wheels) {
+            Publish-AutoClipCpuWheel $nativeWheelStage $externalWheels $wheel @($manifest.native_build.wheel_names)
+        }
+        $nativeReceipt | Add-Member -NotePropertyName publisher_cpu_artifact -NotePropertyValue ([ordered]@{runtime_id=$publisherCpu.identity;archive_sha256=$publisherCpu.sha256;archive_bytes=$publisherCpu.bytes;producer_receipt_path='publisher-wheels/cpu/native-artifact/build/native-build-receipt.json';producer_receipt_sha256=(Get-FileHash -LiteralPath $producerReceiptPath).Hash.ToLowerInvariant();helper_sha256=$CpuNativeHelperSha256.ToLowerInvariant()}) -Force
+        $publisherReceiptBytes = [Text.Encoding]::UTF8.GetBytes(($nativeReceipt | ConvertTo-Json -Depth 12))
+    } else {
     if (-not $NativeBuildRoot) {
         $buildProfile = if ($InstallNvidiaGpu) { 'nvidia' } else { 'cpu' }
         $NativeBuildRoot = Join-Path $ExternalCache "native-build-v11-20260926-$buildProfile"
     }
+    $msysBuildAction = {
+    Assert-AutoClipBuildCancellation
     & (Join-Path $InstallRoot 'build-native-from-source.ps1') -BuildRoot $NativeBuildRoot -Wheelhouse $externalWheels -OpenBlasArchive $openblasArchive -MsysBash $MsysBash -CudaRoot $CudaRoot -InstallNvidiaGpu:$InstallNvidiaGpu -Python $python -Uv $uv.Source
     if (-not $?) { throw 'Pinned PyAV/CTranslate2 source build failed.' }
-    Copy-Item -LiteralPath (Join-Path $NativeBuildRoot 'native-build-receipt.json') -Destination (Join-Path $InstallRoot 'native-build-receipt.json') -Force
+    }
+    if ($NoPrerequisiteAcquisition -and $SecureAcquisitionManifestPath) {
+        Invoke-AutoClipMsysSource $msysBuildAction @($git.Source, $uv.Source, $python)
+    } else { & $msysBuildAction }
+    Assert-AutoClipBuildCancellation
+    }
+    $nativeReceiptBytes = if ($publisherCpu) { $publisherReceiptBytes } else { [IO.File]::ReadAllBytes((Join-Path $NativeBuildRoot 'native-build-receipt.json')) }
+    if ($retainedLauncherPin) {
+        $nativeReceipt = [Text.Encoding]::UTF8.GetString($nativeReceiptBytes).TrimStart([char]0xFEFF) | ConvertFrom-Json
+        $nativeReceipt | Add-Member -NotePropertyName setup_owned_launcher -NotePropertyValue $retainedLauncherPin -Force
+        $nativeReceiptBytes = [Text.Encoding]::UTF8.GetBytes(($nativeReceipt | ConvertTo-Json -Depth 8))
+    }
+    Write-AutoClipCompletionFile (Join-Path $InstallRoot 'native-build-receipt.json') $nativeReceiptBytes -ReplaceExisting
     $nvidiaWheelCount = if ($InstallNvidiaGpu) { @($manifest.external_assets | Where-Object { $_.kind -eq 'python_wheel' }).Count } else { 0 }
     $expectedWheelCount = @($manifest.publisher_wheels).Count + @($manifest.native_build.wheel_names).Count + $nvidiaWheelCount + @(Get-ChildItem -LiteralPath $wheelhouse -Filter '*.whl' -File).Count
+    Assert-AutoClipBuildCancellation
     & $python (Join-Path $InstallRoot 'verify-install-wheels.py') $wheelhouse $externalWheels --count $expectedWheelCount
     if ($LASTEXITCODE -ne 0) { throw 'Wheel ZIP or RECORD integrity check failed.' }
     $autoclipPackage = if ($InstallNvidiaGpu) { 'autoclip[gpu-source]==0.1.0.dev0' } else { 'autoclip==0.1.0.dev0' }
+    Assert-AutoClipBuildCancellation
     & $uv.Source pip install --python $python --no-cache --offline --no-index --find-links $wheelhouse --find-links $externalWheels $autoclipPackage
     if ($LASTEXITCODE -ne 0) { throw 'Offline AutoClip installation failed.' }
     if (-not $openblasArchive -or -not $openblasAsset) { throw 'Pinned OpenBLAS publisher archive is missing.' }
     $openblasDestination = Join-Path $venv 'Lib\site-packages\ctranslate2\libopenblas.dll'
+    Assert-AutoClipBuildCancellation
     Install-PinnedZipMember -Archive $openblasArchive -Member ([string]$openblasAsset.member_path) -Sha256 ([string]$openblasAsset.member_sha256) -Destination $openblasDestination
+    Assert-AutoClipBuildCancellation
     & $uv.Source pip check --python $python
     if ($LASTEXITCODE -ne 0) { throw 'Installed dependency check failed.' }
+    Assert-AutoClipBuildCancellation
     & $python -c "import av, ctranslate2; assert 'int8' in ctranslate2.get_supported_compute_types('cpu')"
     if ($LASTEXITCODE -ne 0) { throw 'Locally built PyAV/CTranslate2 CPU import and capability check failed.' }
     if ($InstallNvidiaGpu) {
+        Assert-AutoClipBuildCancellation
         $nvidiaSmi = Get-Command nvidia-smi.exe -ErrorAction SilentlyContinue
     }
-    if ($InstallNvidiaGpu -and $nvidiaSmi) {
+    if ($InstallNvidiaGpu) {
+        if (-not $nvidiaSmi) { throw 'NVIDIA GPU is unavailable after installation.' }
+        Assert-AutoClipBuildCancellation
         & $nvidiaSmi.Source -L | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-            & $python -c "from autoclip.cuda import ensure_cuda_libraries; ensure_cuda_libraries(); import ctranslate2; assert 'float16' in ctranslate2.get_supported_compute_types('cuda')"
-            if ($LASTEXITCODE -ne 0) { throw 'Locally built CTranslate2 CUDA capability check failed.' }
-        }
+        if ($LASTEXITCODE -ne 0) { throw 'NVIDIA GPU detection failed after installation.' }
+        Assert-AutoClipBuildCancellation
+        & $python -c "from autoclip.cuda import ensure_cuda_libraries; ensure_cuda_libraries(); import ctranslate2; assert 'float16' in ctranslate2.get_supported_compute_types('cuda')"
+        if ($LASTEXITCODE -ne 0) { throw 'Locally built CTranslate2 CUDA capability check failed.' }
     }
 
+    Assert-AutoClipBuildCancellation
     $sitePackages = Join-Path $venv 'Lib\site-packages'
     $builtNativeFiles = @(
         Get-ChildItem -LiteralPath (Join-Path $sitePackages 'av.libs') -Filter '*.dll' -File
@@ -731,20 +1695,53 @@ try {
             sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
         }
     }) -Force
-    $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $receiptPath -Encoding UTF8
+    Assert-AutoClipBuildCancellation
+    Write-AutoClipCompletionFile $receiptPath ([Text.Encoding]::UTF8.GetBytes(($receipt | ConvertTo-Json -Depth 8))) -ReplaceExisting
 
-    [IO.File]::WriteAllText((Join-Path $InstallRoot '.install-complete'), $expectedArchiveSha256)
-    try {
-        Install-AutoClipLaunchers -InstallRoot $InstallRoot
-    } catch {
-        Write-Warning "Could not create a double-click launcher: $($_.Exception.Message). Use Start-AutoClip.ps1 in $InstallRoot."
+    Invoke-AutoClipAppHealth
+    $completionAction = {
+    $folderLink = Join-Path $InstallRoot 'AutoClip.lnk'
+    $createdLauncher = $false
+    if (Test-Path -LiteralPath $folderLink) {
+        if (-not (Test-AutoClipOwnedLauncher $InstallRoot)) { throw 'Existing install-folder launcher is foreign or modified; preserved.' }
+    } else {
+        Install-AutoClipLaunchers -InstallRoot $InstallRoot -SkipDesktopShortcut:$SkipDesktopShortcut
+        $createdLauncher = $true
     }
+    $launcherPin = $null
+    try {
+        $launcherPin = Get-AutoClipLauncherPin $InstallRoot
+        $receiptPath = Join-Path $InstallRoot 'native-build-receipt.json'
+        Assert-AutoClipMsysProtectedPath $receiptPath
+        $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+        $receipt | Add-Member -NotePropertyName setup_owned_launcher -NotePropertyValue $launcherPin -Force
+        Write-AutoClipCompletionFile $receiptPath ([Text.Encoding]::UTF8.GetBytes(($receipt | ConvertTo-Json -Depth 8))) -ReplaceExisting
+    } catch {
+        if ($createdLauncher -and $launcherPin) {
+            Assert-AutoClipSecurePath $folderLink
+            if ((Get-Item -LiteralPath $folderLink).Length -eq $launcherPin.bytes -and
+                (Get-FileHash -LiteralPath $folderLink).Hash -eq $launcherPin.sha256) { [IO.File]::Delete($folderLink) }
+        }
+        throw
+    }
+    if ($setupReceiptContext) { Write-SetupSourceReceipt -Context $setupReceiptContext -StartingProof $setupReceiptStartingProof | Out-Null }
+    Write-AutoClipCompletionFile (Join-Path $InstallRoot '.install-complete') ([Text.Encoding]::UTF8.GetBytes($expectedArchiveSha256))
+    }
+    Invoke-AutoClipBuildCommit $completionAction
 
     Write-Host "AutoClip installed at $InstallRoot"
     Write-Host "Run: & '$(Join-Path $InstallRoot 'Start-AutoClip.ps1')'"
     Write-Host 'FFmpeg and ffprobe are ready. Configure a hosted AI provider in Settings, or install Ollama and pull a local model.'
 } finally {
+    if ($secureDownload) { $PSDefaultParameterValues = $savedDownloadDefaults }
     if ($downloaded -and (Test-Path -LiteralPath $ArchivePath)) {
         Remove-Item -LiteralPath $ArchivePath
+    }
+}
+} finally {
+    if ($ffmpegContext) {
+        $env:Path = $ffmpegProcessPath
+        Assert-AutoClipSecurePath $ffmpegContext.StageRoot
+        if (Test-Path -LiteralPath $ffmpegContext.StageRoot) { Remove-Item -LiteralPath $ffmpegContext.StageRoot -Recurse -Force }
     }
 }

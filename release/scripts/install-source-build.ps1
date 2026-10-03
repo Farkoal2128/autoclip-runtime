@@ -73,7 +73,7 @@ function Install-WingetPackage([string]$Package, [string]$Version, [string]$Over
     if ($Package -eq 'Microsoft.VisualStudio.2022.BuildTools') {
         Confirm-PrerequisiteTerms -Id build-tools -ReceiptRoot $publisherCache -Accepted:$AcceptMicrosoftTerms -NonInteractive:$NonInteractive
         # Let Microsoft's installer present and collect its own exact agreement.
-        $Override = '--wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.Windows10SDK.20348'
+        $Override = '--wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.Windows11SDK.26100'
     }
     $winget = Get-Command winget -ErrorAction SilentlyContinue
     if (-not $winget) { throw "Windows Package Manager is required to provision $Package." }
@@ -157,7 +157,7 @@ if ($LASTEXITCODE -ne 0 -or $gitVersion -notmatch 'git version 2\.(4[5-9]|5[0-9]
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 $vsRoot = if (Test-Path -LiteralPath $vswhere) { & $vswhere -latest -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1 }
 if (-not $vsRoot) {
-    Install-WingetPackage 'Microsoft.VisualStudio.2022.BuildTools' '17.14.41' '--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.Windows10SDK.20348'
+    Install-WingetPackage 'Microsoft.VisualStudio.2022.BuildTools' '17.14.41' '--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.Windows11SDK.26100'
     if (-not (Test-Path -LiteralPath $vswhere)) { throw 'Visual Studio installer did not provide vswhere.exe.' }
     $vsRoot = & $vswhere -latest -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1
 }

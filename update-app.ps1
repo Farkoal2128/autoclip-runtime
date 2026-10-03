@@ -4,7 +4,8 @@ param(
     [string]$WheelPath,
     [string]$ShortcutPath,
     [switch]$Rollback,
-    [switch]$NoShortcut
+    [switch]$NoShortcut,
+    [scriptblock]$StopOwnedApp
 )
 
 $ErrorActionPreference = 'Stop'
@@ -22,6 +23,99 @@ $launcherPath = Join-Path $baseFull 'Start-AutoClip.ps1'
 $desktopLauncherPath = Join-Path $baseFull 'Start-AutoClip-Desktop.ps1'
 $manifestUrl = 'https://raw.githubusercontent.com/Farkoal2128/autoclip-runtime/main/app-release.json'
 $expectedManifestSha256 = 'dd1d27911e8f80d978a14e35f70ef0df1d7be47ce3ca9ea8f1d0537a38d1383c'
+
+function Acquire-SelectionMutex([string]$Base) {
+    $full = [IO.Path]::GetFullPath($Base.Replace('/', '\')).TrimEnd('\')
+    if ($full -notmatch '^[A-Za-z]:\\' -or $full -match '[*?]' -or
+        @($full.Substring(3).Split('\') | Where-Object { $_ -match '[. ]$' }).Count) {
+        throw 'Selection requires an unambiguous local directory path.'
+    }
+    $ancestor = $full
+    $suffix = @()
+    while (-not [IO.Directory]::Exists($ancestor)) {
+        if ([IO.File]::Exists($ancestor)) { throw 'Selection base is not a directory.' }
+        $suffix = @([IO.Path]::GetFileName($ancestor)) + $suffix
+        $ancestor = [IO.Path]::GetDirectoryName($ancestor)
+        if (-not $ancestor) { throw 'Selection base has no existing local ancestor.' }
+    }
+    $check = $ancestor
+    while ($check) {
+        if ([IO.File]::GetAttributes($check) -band [IO.FileAttributes]::ReparsePoint) {
+            throw 'Selection base contains a reparse alias.'
+        }
+        $check = [IO.Path]::GetDirectoryName($check.TrimEnd('\'))
+    }
+    if (-not ('AutoClipSelectionPathV1' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+public static class AutoClipSelectionPathV1 {
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    static extern SafeFileHandle CreateFileW(string path, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    static extern uint GetFinalPathNameByHandleW(SafeFileHandle file, StringBuilder path, uint length, uint flags);
+    public static string Resolve(string path) {
+        using (var handle = CreateFileW(path, 0, 7, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero)) {
+            if (handle.IsInvalid) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            var buffer = new StringBuilder(32768);
+            uint length = GetFinalPathNameByHandleW(handle, buffer, (uint)buffer.Capacity, 0);
+            if (length == 0 || length >= buffer.Capacity) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            return buffer.ToString();
+        }
+    }
+}
+'@
+    }
+    $canonical = [AutoClipSelectionPathV1]::Resolve($ancestor)
+    if ($canonical -notmatch '^\\\\\?\\[A-Za-z]:\\') { throw 'Selection base is not a canonical local path.' }
+    $canonical = $canonical.Substring(4).TrimEnd('\')
+    foreach ($part in $suffix) { $canonical = Join-Path $canonical $part }
+    $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User
+    $ids = @($sid.Value, 'S-1-5-18', 'S-1-5-32-544')
+    $hash = [Security.Cryptography.SHA256]::Create()
+    try {
+        $key = [BitConverter]::ToString($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes($sid.Value + "`n" + $canonical.ToUpperInvariant()))).Replace('-', '').ToLowerInvariant()
+    } finally { $hash.Dispose() }
+    $name = 'Global\AutoClip.Selection.v1.' + $key
+    $security = New-Object Security.AccessControl.MutexSecurity
+    $security.SetOwner($sid)
+    $security.SetAccessRuleProtection($true, $false)
+    foreach ($id in $ids) {
+        $security.AddAccessRule([Security.AccessControl.MutexAccessRule]::new([Security.Principal.SecurityIdentifier]::new($id), 'FullControl', 'Allow'))
+    }
+    $created = $false
+    $mutex = $null
+    $held = $false
+    try {
+        if ($PSVersionTable.PSEdition -eq 'Core') {
+            Add-Type -AssemblyName System.Threading.AccessControl
+            $mutex = [Threading.MutexAcl]::Create($false, $name, [ref]$created, $security)
+            $actual = [Threading.ThreadingAclExtensions]::GetAccessControl($mutex)
+        } else {
+            $mutex = [Threading.Mutex]::new($false, $name, [ref]$created, $security)
+            $actual = $mutex.GetAccessControl()
+        }
+        $rules = @($actual.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
+        if ($actual.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin $ids -or
+            -not $actual.AreAccessRulesProtected -or $rules.Count -ne 3 -or
+            @($rules | Where-Object {
+                $_.IdentityReference.Value -notin $ids -or $_.IsInherited -or
+                $_.AccessControlType -ne 'Allow' -or $_.MutexRights -ne 'FullControl'
+            }).Count -or @($rules.IdentityReference.Value | Select-Object -Unique).Count -ne 3) {
+            throw 'Unsafe AutoClip selection mutex authority.'
+        }
+        try { $held = $mutex.WaitOne(0) }
+        catch [Threading.AbandonedMutexException] { $held = $true }
+        if (-not $held) { throw 'AutoClip selection is busy. Retry after the other updater or cleanup completes.' }
+        return $mutex
+    } catch {
+        if ($held) { $mutex.ReleaseMutex() }
+        if ($mutex) { $mutex.Dispose() }
+        throw
+    }
+}
 
 function Assert-Id([string]$Value) {
     if ($Value -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') { throw "Invalid release identifier: $Value" }
@@ -328,8 +422,11 @@ function Commit-AppState([string]$Value, [switch]$Remove) {
     }
 }
 
-Assert-AppStopped
+$selectionMutex = Acquire-SelectionMutex $baseFull
+try {
 $runtime = Read-RuntimeState
+if ($StopOwnedApp) { & $StopOwnedApp $runtime.root }
+Assert-AppStopped
 $existing = $null
 if (Test-Path -LiteralPath $appStatePath -PathType Leaf) {
     $existing = Get-Content -LiteralPath $appStatePath -Raw | ConvertFrom-Json
@@ -467,4 +564,8 @@ Write-Host "Start with: & '$launcherPath'"
     if ($downloadedManifest -and (Test-Path -LiteralPath $downloadedManifest)) {
         Remove-Item -LiteralPath $downloadedManifest
     }
+}
+} finally {
+    try { $selectionMutex.ReleaseMutex() }
+    finally { $selectionMutex.Dispose() }
 }

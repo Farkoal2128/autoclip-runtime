@@ -1,0 +1,31 @@
+# IM-VS-44: selected SDK license cabinet extraction preparation
+
+## Scope and source linkage
+
+Parent authorized preparation of one ordinary-recipient data extraction command. Root owns execution and later terms review/consent. No VM operation, vendor acquisition, MSI/session execution, production change or acceptance occurred here.
+
+Actual VS43 read-only metadata `D:/AutoClip-Inno-Migration/vm-vs43-sdk-metadata-primary-c1ff85f82b0a.json` was rehashed: 5,159 bytes/SHA-256 `c1ff85f82b0a71a4d5d5f6d531aea732ea81f79dc43a82a9c7bad5536f39615a`. Parent identifies File ID `fil68b9d27f2a09ae761a747880ac1d9f7a`, long name sdk_license.rtf, 248,573 bytes, sequence4, Media Disk3/LastSequence4/external cabinet `598442d9f84639d200d4f3af477da95c.cab`.
+
+Exact VS37 incoming inventory and frozen catalog-linked inventory both identify that CAB under `Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers`: 59,227 bytes/SHA-256 `670383674e304ce1c736576937bbe890afd4be43f44c17dbe1605bb0cbf06174`. Selected Win11SDK_10.0.26100/version10.0.26100.15 association is official `https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/6b2630c96c8b87f5702a01c8170dbb4e/598442d9f84639d200d4f3af477da95c.cab`. This linkage derives from selected catalog metadata, separately authenticated by VS36; no new signature claim was made here.
+
+## Command behavior
+
+New file: `D:/AutoClip-Inno-Migration/vm-transfer/vs44-sdk-license-extract-command.txt`: 5,350 bytes/SHA-256 `6cf0440c7dca76ffe5a73ad470cda8acec69daadf100c7a5002f1034a9f5e000`.
+
+Requires ordinary native64 autocliplab and already reviewed pin/path/hash functions. Holds exact CAB readlock at protected VS40 layout. Uses absolute native System32 expand.exe under held image readlock after current Valid Microsoft Authenticode/original filename/company checks; records its actual version/hash. Creates fresh private recipient output and calls only `expand <exact-cab> -F:fil68b9d27f2a09ae761a747880ac1d9f7a <fresh-data-directory>`, with trusted system CWD. [Microsoft expand documentation](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/expand) supports selecting a cabinet member with -F. This extracts data and does not run any code from the cabinet or open an installer session.
+
+Captures original native handle/start/exit and retained stdout/stderr, without kill, timeout or retry. Requires exactly one regular extracted member, exact name and 248,573-byte size, rejects reparse paths, validates RTF header, hashes held data, copies via CreateNew to sdk_license.rtf and verifies full copy hash/size. Original member remains retained. Receipt explicitly leaves terms_accepted false.
+
+## Verification and limits
+
+PowerShell Parser.ParseFile passed; no native extraction was performed by this worker and no behavioral GREEN is claimed. Command bytes/hash are reported in handoff after final freeze. Root must inspect actual output/exit and complete RTF bytes, preserve measured terms hash, read the terms and obtain the applicable consent decision. Exact license text has not yet been extracted or accepted. Failed or partial output remains preserved; no installation capability or release gate is established.
+
+## Root actual extraction and terms review, 2026-10-02
+
+Root preserved the original preparation and made r2 solely to distinguish cabinet code execution from system-tool execution: 5379 bytes/SHA256 `13f35ca20c3039178b907ef0dc3b16a96bf51b2fa6a1810392cbf9bc1898fd44`. Actual r2 stopped before native execution/staging at its OriginalFilename assertion. The existing Windows tool has a valid Microsoft catalog signature and actual OriginalFilename `expand`, without `.exe`. Read-only primary `D:/AutoClip-Inno-Migration/vm-vs44-expand-identity-primary-8b3827961f67.json`, SHA256 `8b3827961f670a6269ad8150751c803d4dc8ec3e90f25c717079ca2584ed1b41`, records System32 expand.exe73728 bytes/SHA256 `e5cd2d9536b0729ce90368dce9d923dccfa6f75f2996e31bb349e6a75a2aa897`, valid Catalog signature and Microsoft subject/company. Rehash the primary before using its envelope identity; the exact tool identity is also bound in the extraction primary below.
+
+Immutable r3 changes only the expected OriginalFilename literal from `expand.exe` to `expand`; all signature, path, CAB pin, held-lock and data-only checks remain. r3: 5375 bytes/SHA256 `42ff5b4c7d0edb6478901ee4f80acdd2393b65f0db31ae638053a5a85bfa36c5`. Root actual native10884/original handle2856 started at guestUTC2026-10-02T11:54:44.1451204Z and exited0 at11:54:44.2409450Z, stdout278 bytes/stderr0. Guest clock remains behind host after saved-state suspension; no clock adjustment was performed. The exact recipient stage `C:/Users/autocliplab/AppData/Local/Temp/vs t-fab95045` retains the original member and verified RTF copy. No code from the cabinet or MSI installer session executed.
+
+Actual RTF248573 bytes/SHA256 `0f4a26ac9dc50066f8a1bfeaaf3f092d1b9e4791df5487b9f3c31e7c3dc4d7f5`. Primary receipt/full-RTF envelope `D:/AutoClip-Inno-Migration/vm-vs44-sdk-license-primary-2b34f66b63d3-v2.json`:333110 bytes/SHA256 `2b34f66b63d339e0f7416295cc05ff397a88ac4a78b5f23afd1f9010bd890534`. Preserved data copy `D:/AutoClip-Inno-Migration/sdk-license-0f4a26ac9dc5-v2.rtf` matches exact bytes/hash. An initial host preservation loop flattened its nested arrays and produced empty destination files; those failed outputs were not overwritten or used as primary evidence. Explicit CreateNew writes to distinct v2 destinations succeeded and were checked against the live original envelope/full RTF hash.
+
+Root read the full RTF through the installed Windows .NET RichTextBox data parser, with no vendor code execution. Derived UTF8 plaintext `D:/AutoClip-Inno-Migration/sdk-license-0f4a26ac9dc5-text.txt`:28079 bytes/SHA256 `fc8262c039925c9913d1991ac7e9090581cd0c8df9fcf1f711f35928724abbd0`. Agreement identifies MICROSOFT WINDOWS SOFTWARE DEVELOPMENT KIT (SDK) FOR WINDOWS; EULAID WIN10SDK.RTM.AUG_2018_en-US. Actual extraction receipt leaves terms_accepted=false. A separate precise SDK VM-consent question was presented because prior consent named Python, Build Tools and VC Runtime. Pending acceptance is not permission to install SDK; no product installation, capability, installer/uninstaller qualification or release gate is claimed here.

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "status": "DEVELOPMENT_HANDOFF_NOT_RELEASE",
+  "filename": "AutoClip-VM-handoff-20261002.zip",
+  "original_host_path": "D:\\acpu-1002-3343baed\\AutoClip-VM-handoff-20261002.zip",
+  "bytes": 596657908,
+  "sha256": "c8b3e02e347b28d2bf47993056d5149d905d9b1ae115b2d425cac9e41379089b",
+  "files": 633,
+  "payload_bytes": 596401267,
+  "includes_vm_disks": false,
+  "verification": "Every ZIP payload read back and size/SHA256 matched transfer-index.json",
+  "source_parent_commit": "ccc14a25014a35daf9e2de2edc595f8e02927671"
+}

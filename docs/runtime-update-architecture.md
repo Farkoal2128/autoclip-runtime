@@ -204,6 +204,13 @@ does not claim independently verified authority or entitlement. Microsoft Build
 Tools/VC installers retain their native agreement UI rather than quiet/package
 agreement acceptance. Equivalence of downloaded reference terms to exact installer
 terms remains a reviewer question, and the native agreement is still presented.
+For the new Inno Setup migration only, the
+[installer contract](installer-migration/contract-v1.md#direct-microsoft-installation-qualification)
+intentionally permits supported quiet Build Tools/SDK installation after the
+recipient explicitly accepts the exact applicable agreements in the wizard.
+This scoped revision does not change historical standalone consent behavior or
+qualify an unresolved network-installer route. A VM-only declaration applies
+only to those tests.
 No automatic script or test may provide a real recipient's acceptance without
 their authorization.
 The documented `irm .../install.ps1 | iex` bootstrap has no script-root path.
