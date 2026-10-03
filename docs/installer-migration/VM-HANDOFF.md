@@ -247,3 +247,23 @@ Transfer audit: read-only `vm_handoff_audit` independently inspected current
 source, r8 packet and review; root owns integration. Actual per-run model
 telemetry was not exposed. All new source/tests/docs in this checkpoint are
 development work; no public release pin was promoted for the CPU candidate.
+
+## Git delivery and CI at handoff
+
+Source checkpoint commit: `4897a044431c476de99008a1ea02eb7c8bf13c58`, pushed
+to `origin/work/v41-current-app-at01`; `git ls-remote` confirmed that exact
+remote SHA and the working tree was clean. A subsequent documentation-only
+commit records this delivery status; use `git log -1` for the final handoff head.
+The separate ZIP must still be copied to the destination: it is not uploaded
+to GitHub or reachable merely by cloning this branch. Verify the committed
+outer SHA-256 in `vm-handoff-transfer.json` before extraction.
+
+GitHub [Runtime release checks for the source checkpoint](https://github.com/Farkoal2128/autoclip-runtime/actions/runs/37090630411)
+completed **failure**. Public installer/app pin checks passed. Repository
+checks failed at `Pinned upstream asset regression cases` on Ubuntu/macOS and
+`Prerequisite consent and CUDA provisioning regression cases` on Windows.
+Public annotations report exit1, not the underlying exception; no root cause
+or fix is claimed here. Resolve these regressions before release. The listed
+local 150-test/seven-suite successes cover different checks and do not make
+CI green. `gh` was not authenticated on this host; the public GitHub API
+provided the run/jobs/annotations status without changing authentication.
